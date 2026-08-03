@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environment (OS-specific; recreate with: python -m venv venv)
+venv/
+
+# Application data — personal financial/nutrition data, secrets, backups and
+# receipts. All auto-created at startup (see backend/database.py).
+data/
+
+# Service logs
+service-logs/

@@ -350,8 +350,8 @@ def app_switcher():
                 on_click=lambda: ui.run_javascript("window.__goApp('home')")
             ):
                 with ui.row().classes("items-center gap-3 no-wrap w-full"):
-                    ui.icon("home").style(f"color:{INDIGO}")
-                    ui.label("Home")
+                    ui.icon("apps").style(f"color:{INDIGO}")
+                    ui.label("Ensemble")
 
 
 def shell():

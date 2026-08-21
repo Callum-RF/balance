@@ -180,6 +180,7 @@ def inject_theme():
       }}
     </script>
     """)
+    ui.add_head_html(_APP_SWITCH_JS)
     ui.add_head_html(f"""<meta name="theme-color" content="{BG}">
     <style>
         body {{ background-color: {BG} !important; color: {TEXT}; }}
@@ -294,6 +295,65 @@ def inject_theme():
     """)
 
 
+# Sibling apps served from this same tailnet node, for the header app-switcher.
+THIS_APP = "balance"
+APPS = [
+    ("balance", "Balance", "account_balance_wallet"),
+    ("medley", "Medley", "video_library"),
+]
+
+# The apps share a hostname but sit on different ports, and those ports differ
+# between the tailnet (Balance :8444, Medley :8443, launcher at the root) and
+# local dev (:8000 / :8100, no launcher). Resolving from location at click time
+# means the switcher works in both places with no server-side config.
+_APP_SWITCH_JS = """
+<script>
+window.__appUrl = function (app) {
+  var h = location.hostname;
+  var isLocal = (h === 'localhost' || h === '127.0.0.1');
+  if (app === 'home') { return isLocal ? null : 'https://' + h + '/'; }
+  var ports = isLocal ? {balance: 8000, medley: 8100} : {balance: 8444, medley: 8443};
+  return (isLocal ? 'http:' : 'https:') + '//' + h + ':' + ports[app] + '/';
+};
+window.__goApp = function (app) {
+  var u = window.__appUrl(app);
+  if (u) { location.href = u; }
+};
+</script>
+"""
+
+
+def app_switcher():
+    """Grid button that jumps to the sibling apps, or back to the Home launcher.
+    Targets resolve client-side so the same menu works over the tailnet and in
+    local dev, where the ports differ."""
+    with ui.button(icon="apps").props("flat round dense").style(
+        f"color:{TEXT} !important"
+    ):
+        with ui.menu().classes("p-1"):
+            with ui.row().classes("items-center gap-2 no-wrap px-3 py-1"):
+                ui.icon("check").classes("text-sm").style(f"color:{INDIGO}")
+                ui.label(f"You're in {dict((a[0], a[1]) for a in APPS)[THIS_APP]}") \
+                    .classes("text-xs").style(f"color:{TEXT_DIM}")
+            ui.separator().style(f"background:{BORDER}")
+            for key, label, icon in APPS:
+                if key == THIS_APP:
+                    continue
+                with ui.menu_item(
+                    on_click=lambda k=key: ui.run_javascript(f"window.__goApp('{k}')")
+                ):
+                    with ui.row().classes("items-center gap-3 no-wrap w-full"):
+                        ui.icon(icon).style(f"color:{INDIGO}")
+                        ui.label(label)
+            ui.separator().style(f"background:{BORDER}")
+            with ui.menu_item(
+                on_click=lambda: ui.run_javascript("window.__goApp('home')")
+            ):
+                with ui.row().classes("items-center gap-3 no-wrap w-full"):
+                    ui.icon("home").style(f"color:{INDIGO}")
+                    ui.label("Home")
+
+
 def shell():
     """Responsive header + drawer nav. Persistent sidebar above the
     breakpoint (desktop), collapsible overlay drawer below it (mobile) --
@@ -310,6 +370,8 @@ def shell():
             # !important beats a plain inline color -- so ours needs one too.
             ui.button(on_click=lambda: drawer.toggle(), icon="menu").props("flat round dense").style(f"color:{TEXT} !important")
             ui.label("bal=nce").classes("text-lg font-bold").style(f"color:{TEXT}")
+        # Right side of the header: jump to the other apps on this node.
+        app_switcher()
 
     with ui.left_drawer().props("bordered breakpoint=1024 width=240").classes("p-3 gap-1").style(
         f"background:{SURFACE}"

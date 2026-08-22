@@ -300,6 +300,8 @@ THIS_APP = "balance"
 APPS = [
     ("balance", "Balance", "account_balance_wallet"),
     ("medley", "Medley", "video_library"),
+    ("cadence", "Cadence", "graphic_eq"),
+    ("crescendo", "Crescendo", "fitness_center"),
 ]
 
 # The apps share a hostname but sit on different ports, and those ports differ
@@ -312,7 +314,13 @@ window.__appUrl = function (app) {
   var h = location.hostname;
   var isLocal = (h === 'localhost' || h === '127.0.0.1');
   if (app === 'home') { return isLocal ? null : 'https://' + h + '/'; }
-  var ports = isLocal ? {balance: 8000, medley: 8100} : {balance: 8444, medley: 8443};
+  // Crescendo is the odd one out: a path on the root origin rather than its own
+  // port, which is what lets it install inside Ensemble's scope and work offline.
+  if (app === 'crescendo') {
+    return isLocal ? 'http://' + h + ':8300/crescendo/' : 'https://' + h + '/crescendo/';
+  }
+  var ports = isLocal ? {balance: 8000, medley: 8100, cadence: 8200}
+                      : {balance: 8444, medley: 8443, cadence: 8445};
   return (isLocal ? 'http:' : 'https:') + '//' + h + ':' + ports[app] + '/';
 };
 window.__goApp = function (app) {

@@ -5,8 +5,8 @@ frontend (web UI) in one process, on one port.
 Usage:
     python run.py
 
-Then open http://<this-machine-ip>:8000 from any browser on your
-Tailscale network (desktop or phone).
+Then open it through the Ensemble launcher on your Tailscale network.
+The server listens on localhost; Tailscale fronts it (see BALANCE_HOST).
 """
 import os
 
@@ -62,9 +62,14 @@ if __name__ == "__main__":
     # (BALANCE_RELOAD=1). Reload watches ONLY the source dirs -- never data/ --
     # so the app's constant writes to app.db can't trigger a restart loop.
     _port = int(os.environ.get("BALANCE_PORT", "8000"))
+    # Localhost only. Tailscale proxies to 127.0.0.1, so binding every interface
+    # would add nothing except reachability from the local network, where
+    # nothing authenticates in front of this API. Override for a deliberate LAN
+    # run: BALANCE_HOST=0.0.0.0
+    _host = os.environ.get("BALANCE_HOST", "127.0.0.1")
     if os.environ.get("BALANCE_RELOAD") == "1":
-        uvicorn.run("run:app", host="0.0.0.0", port=_port, reload=True,
+        uvicorn.run("run:app", host=_host, port=_port, reload=True,
                     reload_dirs=[os.path.join(_HERE, "backend"),
                                  os.path.join(_HERE, "frontend")])
     else:
-        uvicorn.run(app, host="0.0.0.0", port=_port)
+        uvicorn.run(app, host=_host, port=_port)

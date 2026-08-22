@@ -210,32 +210,38 @@ Screen" below — this isn't a gap, it's just how the architecture works
 
 ### Remote access (any host platform)
 
-Tailscale on the server + phone, same account on both, then
-`http://<tailscale-ip>:8000` from your phone's browser. "Add to Home
-Screen" in Chrome to install it like an app.
+Tailscale on the server + phone, same account on both, then open Balance
+through the [Ensemble launcher](../launcher/) at
+`https://balance.<your-tailnet>.ts.net` — see the section below, which sets
+up the HTTPS name and the proxy in front of the app.
 
 **Why Tailscale specifically, and keep it:** the app has **no login** — it
-holds your finances and health data but anything that can reach `:8000`
-sees everything. Tailscale *is* the security boundary here: only devices on
+holds your finances and health data but anything that can reach it sees
+everything. Tailscale *is* the security boundary here: only devices on
 your own tailnet can reach the server, and to the public internet the app
 simply doesn't exist (no open ports, nothing to scan). That's why remote
 access should go through Tailscale (or a comparable private VPN) rather than
 port-forwarding or a public tunnel (ngrok / Cloudflare Tunnel), which would
 expose an unauthenticated personal-data app to the world.
 
-- If you only ever use it at home on the same Wi-Fi, you can skip Tailscale
-  and hit the server's LAN address (`http://<192.168…>:8000`) — reserve its
-  IP in your router so it doesn't drift. You lose away-from-home access.
+- **`run.py` binds `127.0.0.1`, not `0.0.0.0`.** `tailscale serve` proxies
+  from localhost, so listening on every interface added nothing except
+  reachability from the local Wi-Fi — where, as above, nothing authenticates
+  in front of the API. Anyone on the same network could read and write your
+  finances by asking the port directly, without Tailscale being involved at
+  all. Localhost makes "Tailscale is the boundary" actually true rather than
+  merely intended.
+- This also means `http://<tailscale-ip>:8000` no longer works; go through
+  the HTTPS name. For a deliberate LAN run, set `BALANCE_HOST=0.0.0.0` —
+  and understand what that opens.
 - Keep your tailnet to your own devices. If you ever want to share Balance
   with someone else, that's the point to add real authentication rather than
   widen network/tailnet access.
-- `run.py` already binds `0.0.0.0`, so it's reachable on the Tailscale
-  interface with no code change.
 
 ### A friendly, private URL — `https://balance.<your-tailnet>.ts.net`
 
-Goal: reach the app at a real name over HTTPS instead of
-`http://<tailscale-ip>:8000`, while keeping it **private to your own devices**
+Goal: reach the app at a real name over HTTPS, while keeping it
+**private to your own devices**
 and **buying no domain**. Tailscale does all of this for free.
 
 > **Common wrong turn:** the **"Search domains"** field in Tailscale's DNS

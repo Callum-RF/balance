@@ -1090,6 +1090,34 @@ def dashboard():
                             cb.monthly_amount, f" {CUR}", is_limit=True,
                         )
 
+    # --- Cost per macro: the signature money x health crossover. Pantry items
+    # carry both price and protein, so we can rank what gives the most protein
+    # per pound -- the "eat well on a budget" insight no single-purpose app has.
+    # Shown only when there's enough priced pantry data to rank. ---
+    with Session(engine) as session:
+        _pantry = session.exec(select(PantryItem)).all()
+    protein_value = [
+        (it.protein_g / it.price, it.name, it.calories)
+        for it in _pantry
+        if it.price and it.price > 0 and it.protein_g and it.protein_g > 0
+    ]
+    if len(protein_value) >= 2:
+        protein_value.sort(key=lambda x: -x[0])
+        best = protein_value[:3]
+        worst = protein_value[-1]
+        with card_box().classes("w-full"):
+            section_header("Best value protein", icon="fitness_center", icon_color=EMERALD,
+                           subtitle=f"Most protein per {CUR}1 in your pantry — handy for a budget-friendly bulk")
+            for score, name, _cals in best:
+                with ui.row().classes("w-full items-center gap-2 py-1"):
+                    ui.label(name).classes("text-sm font-semibold flex-grow")
+                    ui.label(f"{score:,.0f}g protein / {CUR}1").classes("text-sm").style(f"color:{EMERALD}")
+            if worst not in best:
+                ui.separator().classes("my-1")
+                with ui.row().classes("w-full items-center gap-2"):
+                    ui.label(f"Worst value: {worst[1]}").classes("text-xs flex-grow").style(f"color:{TEXT_DIM}")
+                    ui.label(f"{worst[0]:,.0f}g / {CUR}1").classes("text-xs").style(f"color:{AMBER}")
+
     # --- Insights: notable this-month-vs-last-month changes, computed not curated ---
     prev_month_start, prev_month_end = period_bounds("monthly", month_start - timedelta(days=1))
     with Session(engine) as session:

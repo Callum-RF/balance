@@ -1,0 +1,16 @@
+# Keep the build context small and never bake personal data into the image.
+data/
+venv/
+.git/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+service-logs/
+tests/
+docs/
+scripts/
+*.md
+.dockerignore
+Dockerfile
+docker-compose.yml

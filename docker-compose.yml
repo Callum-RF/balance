@@ -1,0 +1,18 @@
+# Balance — one-command self-host.  Run:  docker compose up -d
+# Then open http://localhost:8000
+services:
+  balance:
+    build: .
+    image: balance:latest
+    container_name: balance
+    ports:
+      # host:container — change the left side to serve on a different host port.
+      - "8000:8000"
+    volumes:
+      # Your data lives here on the host (SQLite DB, receipts, storage secret).
+      # Back Balance up by copying this ./data folder. See DEPLOY.md.
+      - ./data:/app/data
+    environment:
+      # Set your timezone so "today" and daily rollovers are correct.
+      - TZ=Europe/London
+    restart: unless-stopped

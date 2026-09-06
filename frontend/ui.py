@@ -126,34 +126,100 @@ def load_app_settings():
 for _field_cls in (ui.input, ui.number, ui.select, ui.textarea):
     _field_cls.default_props("outlined dense")
 
+# --- Feature modules -------------------------------------------------------
+# Optional areas of the app that can be switched on/off in Settings > Modules.
+# Core nav items (module key = None below) are always shown. Phase 1 ships every
+# module ON, so nothing changes by default -- the mechanism just becomes
+# available; Phase 2 sets the lean shipped defaults. `tier` is grouping metadata
+# for the Settings screen (and a future "lean preset").
+#   key:            (label,                  tier,     default_on)
+MODULES = {
+    "income":        ("Income",               "money",  True),
+    "networth":      ("Accounts & Net Worth", "money",  True),
+    "subscriptions": ("Subscriptions",        "money",  True),
+    "scheduled":     ("Scheduled",            "money",  True),
+    "prices":        ("Prices",               "money",  True),
+    "forecast":      ("Forecast",             "money",  True),
+    "savings":       ("Savings Goals",        "money",  True),
+    "recipes":       ("Recipes",              "health", True),
+    "pantry":        ("Pantry",               "health", True),
+    "shopping":      ("Shopping",             "health", True),
+    "import":        ("Import Statement",     "power",  True),
+    "reports":       ("Monthly Report",       "power",  True),
+}
+
+# Ordered (tier_key, tier_label) for grouping the Settings > Modules toggles.
+MODULE_TIERS = [("money", "Money"), ("health", "Health"), ("power", "Power / Advanced")]
+
+# NAV_ITEMS / BOTTOM_NAV_ITEMS: (label, route, icon, module_key). module_key None
+# = core (always shown); otherwise the item appears only when that module is on.
 NAV_ITEMS = [
-    ("Dashboard", "/", "space_dashboard"),
-    ("Transactions", "/transactions", "receipt_long"),
-    ("Income", "/income", "payments"),
-    ("Accounts", "/accounts", "account_balance"),
-    ("Import Statement", "/import", "upload_file"),
-    ("Food Log", "/food-log", "restaurant"),
-    ("Recipes", "/recipes", "menu_book"),
-    ("Pantry", "/pantry", "kitchen"),
-    ("Shopping", "/shopping", "shopping_cart"),
-    ("Subscriptions", "/subscriptions", "autorenew"),
-    ("Scheduled", "/scheduled", "event_repeat"),
-    ("Prices", "/prices", "trending_up"),
-    ("Forecast", "/forecast", "insights"),
-    ("Savings Goals", "/savings", "savings"),
-    ("Monthly Report", "/reports", "summarize"),
-    ("Profile & Goals", "/profile", "person"),
-    ("Settings", "/settings", "settings"),
+    ("Dashboard", "/", "space_dashboard", None),
+    ("Transactions", "/transactions", "receipt_long", None),
+    ("Income", "/income", "payments", "income"),
+    ("Accounts", "/accounts", "account_balance", "networth"),
+    ("Import Statement", "/import", "upload_file", "import"),
+    ("Food Log", "/food-log", "restaurant", None),
+    ("Recipes", "/recipes", "menu_book", "recipes"),
+    ("Pantry", "/pantry", "kitchen", "pantry"),
+    ("Shopping", "/shopping", "shopping_cart", "shopping"),
+    ("Subscriptions", "/subscriptions", "autorenew", "subscriptions"),
+    ("Scheduled", "/scheduled", "event_repeat", "scheduled"),
+    ("Prices", "/prices", "trending_up", "prices"),
+    ("Forecast", "/forecast", "insights", "forecast"),
+    ("Savings Goals", "/savings", "savings", "savings"),
+    ("Monthly Report", "/reports", "summarize", "reports"),
+    ("Profile & Goals", "/profile", "person", None),
+    ("Settings", "/settings", "settings", None),
 ]
 
 # The handful of most-used destinations shown in the mobile bottom nav bar;
 # everything else stays one tap away behind "More" (which opens the drawer).
 BOTTOM_NAV_ITEMS = [
-    ("Dashboard", "/", "space_dashboard"),
-    ("Transactions", "/transactions", "receipt_long"),
-    ("Food Log", "/food-log", "restaurant"),
-    ("Pantry", "/pantry", "kitchen"),
+    ("Dashboard", "/", "space_dashboard", None),
+    ("Transactions", "/transactions", "receipt_long", None),
+    ("Food Log", "/food-log", "restaurant", None),
+    ("Pantry", "/pantry", "kitchen", "pantry"),
 ]
+
+
+def load_enabled_modules() -> dict:
+    """Effective {module_key: bool} -- a persisted override, else the registry default."""
+    with Session(engine) as session:
+        settings = session.exec(select(AppSettings)).first()
+    overrides = {}
+    raw = getattr(settings, "modules_json", None) if settings else None
+    if raw:
+        try:
+            overrides = json.loads(raw) or {}
+        except (ValueError, TypeError):
+            overrides = {}
+    return {key: bool(overrides.get(key, meta[2])) for key, meta in MODULES.items()}
+
+
+def module_enabled(module_key, enabled=None) -> bool:
+    """Whether a nav item should render. Core items (module_key=None) are always shown."""
+    if module_key is None:
+        return True
+    if enabled is None:
+        enabled = load_enabled_modules()
+    return enabled.get(module_key, True)
+
+
+def set_module_enabled(module_key: str, value: bool) -> None:
+    """Persist a single module on/off override into AppSettings.modules_json."""
+    with Session(engine) as session:
+        settings = session.exec(select(AppSettings)).first()
+        overrides = {}
+        if settings.modules_json:
+            try:
+                overrides = json.loads(settings.modules_json) or {}
+            except (ValueError, TypeError):
+                overrides = {}
+        overrides[module_key] = bool(value)
+        settings.modules_json = json.dumps(overrides)
+        session.add(settings)
+        session.commit()
 
 
 def inject_theme():
@@ -391,7 +457,10 @@ def shell():
             if await ui.context.client.run_javascript("window.innerWidth < 1024"):
                 drawer.hide()
 
-        for label, target, icon in NAV_ITEMS:
+        enabled_modules = load_enabled_modules()
+        for label, target, icon, mod in NAV_ITEMS:
+            if not module_enabled(mod, enabled_modules):
+                continue
             with ui.link(target=target).classes(
                 "drawer-nav-item flex items-center gap-3 px-3 py-2 rounded-lg no-underline"
             ).style(f"color:{TEXT_DIM}").on("click", _close_drawer_on_mobile):
@@ -418,7 +487,9 @@ def shell():
     with ui.element("nav").classes(
         "bottom-nav fixed bottom-0 left-0 right-0 z-40 flex justify-around items-stretch lg:hidden"
     ):
-        for label, target, icon in BOTTOM_NAV_ITEMS:
+        for label, target, icon, mod in BOTTOM_NAV_ITEMS:
+            if not module_enabled(mod, enabled_modules):
+                continue
             with ui.link(target=target).classes(
                 "bottom-nav-item flex flex-col items-center justify-center flex-1 py-2 gap-0.5 no-underline"
             ):
@@ -4250,6 +4321,29 @@ def settings_page():
                             ui.label(theme["label"]).classes("text-sm font-semibold").style(f"color:{theme['TEXT']}")
                             if active:
                                 ui.icon("check_circle").classes("text-sm").style(f"color:{theme['INDIGO']}")
+
+    # --- modules (optional feature areas) ---
+    with card_box().classes("w-full max-w-lg"):
+        section_header("Modules", icon="widgets", icon_color=INDIGO,
+                       subtitle="Turn optional areas on or off. Core areas (dashboard, transactions, food log) always stay. Changes apply on the next page load.")
+        _enabled = load_enabled_modules()
+
+        def toggle_module(key, value):
+            set_module_enabled(key, value)
+            ui.notify(f"{MODULES[key][0]} {'shown' if value else 'hidden'} — reload to update the menu.", type="info")
+
+        for tier_key, tier_label in MODULE_TIERS:
+            tier_modules = [(k, m) for k, m in MODULES.items() if m[1] == tier_key]
+            if not tier_modules:
+                continue
+            ui.label(tier_label).classes("text-xs font-semibold uppercase mt-3 mb-1").style(f"color:{TEXT_DIM}")
+            for key, meta in tier_modules:
+                ui.switch(meta[0], value=_enabled.get(key, meta[2])).props("dense color=primary").on_value_change(
+                    lambda e, k=key: toggle_module(k, e.value)
+                )
+
+        ui.button("Reload to apply", icon="refresh",
+                  on_click=lambda: ui.run_javascript("location.reload()")).props("flat dense no-caps color=primary").classes("mt-3")
 
     # --- categories ---
     with card_box().classes("w-full max-w-2xl"):

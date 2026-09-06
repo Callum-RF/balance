@@ -277,6 +277,11 @@ class AppSettings(SQLModel, table=True):
     # cloud-synced folder). When set, each automated backup also copies the
     # snapshot + receipts here, so a disk failure can't take out both copies.
     backup_mirror_path: Optional[str] = None
+    # Feature-module on/off overrides as a JSON object {module_key: bool}.
+    # None / missing key = use the module's registry default (see MODULES in
+    # the frontend). Lets the app ship a lean default while a power user keeps
+    # everything switched on, without schema churn per module.
+    modules_json: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

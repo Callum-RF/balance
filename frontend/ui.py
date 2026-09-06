@@ -809,6 +809,83 @@ def dashboard():
     spent_this_month = sum(t.amount for t in month_transactions)
     income_this_month = sum(i.amount for i in month_income)
     net_this_month = income_this_month - spent_this_month
+    income_module = module_enabled("income")
+
+    # --- Quick actions: the primary "what do I do next" ---
+    with ui.row().classes("w-full gap-2 flex-wrap mt-1 mb-1"):
+        ui.button("Add expense", icon="add",
+                  on_click=lambda: ui.navigate.to("/add-transaction")).props("unelevated no-caps color=primary")
+        ui.button("Log meal", icon="restaurant",
+                  on_click=lambda: ui.navigate.to("/add-food")).props("unelevated no-caps color=primary")
+        if income_module:
+            ui.button("Add income", icon="payments",
+                      on_click=lambda: ui.navigate.to("/add-income")).props("outline no-caps color=primary")
+
+    # --- Needs your attention: computed, verb-driven nudges (the actionable core) ---
+    protein_today = sum(f.protein_g or 0 for f in food_today)
+    days_left = max((month_end - today).days, 0)
+    groceries_id = next((cid for cid, n in categories.items() if n == "Groceries"), None)
+    grocery_budget = next((b for b in category_budgets if groceries_id and b.category_id == groceries_id), None)
+
+    nudges = []  # (icon, text, color, cta_label|None, route|None)
+
+    def _budget_nudge(label, spent, target, route):
+        if not target:
+            return
+        if spent > target:
+            nudges.append(("account_balance_wallet",
+                           f"{label} {CUR}{spent:,.0f}/{CUR}{target:,.0f} — {CUR}{spent - target:,.0f} over budget",
+                           RED, "Review", route))
+        else:
+            per_day = (target - spent) / max(days_left, 1)
+            tail = (f", {days_left} days left — {CUR}{per_day:,.0f}/day to stay under"
+                    if days_left else " — last day of the month")
+            nudges.append(("account_balance_wallet", f"{label} {CUR}{spent:,.0f}/{CUR}{target:,.0f}{tail}",
+                           AMBER if spent / target >= 0.8 else EMERALD, "Review", route))
+
+    if grocery_budget:
+        _budget_nudge("Groceries", month_spend_by_category.get(groceries_id, 0), grocery_budget.monthly_amount, "/transactions")
+    elif overall_budget and overall_budget.monthly_amount:
+        _budget_nudge("Budget", spent_this_month, overall_budget.monthly_amount, "/transactions")
+    else:
+        nudges.append(("savings", "Set a monthly budget to track your spending", INDIGO, "Set budget", "/profile"))
+
+    if not food_today:
+        nudges.append(("restaurant", "No meals logged today", INDIGO, "Log meal", "/add-food"))
+    elif goals.protein_g and (goals.protein_g - protein_today) > 10:
+        nudges.append(("fitness_center",
+                       f"Protein {goals.protein_g - protein_today:,.0f}g short today "
+                       f"({protein_today:,.0f}/{goals.protein_g:,.0f}g)",
+                       AMBER, "Log meal", "/add-food"))
+
+    _eat_out_ids = [cid for cid, n in categories.items() if n in ("Dining Out", "Coffee/Snacks")]
+    _eat_out = sum(month_spend_by_category.get(cid, 0) for cid in _eat_out_ids)
+    if _eat_out >= 20:
+        nudges.append(("restaurant_menu",
+                       f"{CUR}{_eat_out:,.0f} on eating out this month — cooking more saves money and calories",
+                       AMBER, "See", "/transactions"))
+
+    if module_enabled("subscriptions"):
+        with Session(engine) as session:
+            _subs = session.exec(select(Subscription).where(Subscription.active == True)).all()  # noqa: E712
+        _due = [s for s in _subs if s.next_payment_date and today <= s.next_payment_date <= today + timedelta(days=7)]
+        if _due:
+            nudges.append(("autorenew",
+                           f"{len(_due)} subscription(s) renew this week ({CUR}{sum(s.amount for s in _due):,.0f})",
+                           AMBER, "View", "/subscriptions"))
+
+    with card_box().classes("w-full"):
+        section_header("Needs your attention", icon="notifications_active", icon_color=AMBER)
+        if not nudges:
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("check_circle").classes("text-lg").style(f"color:{EMERALD}")
+                ui.label("You're on track — nothing needs your attention.").classes("text-sm")
+        for _icon, _text, _color, _cta, _route in nudges[:5]:
+            with ui.row().classes("w-full items-center gap-3 py-1"):
+                ui.icon(_icon).classes("text-lg shrink-0").style(f"color:{_color}")
+                ui.label(_text).classes("text-sm flex-grow")
+                if _cta and _route:
+                    ui.button(_cta, on_click=lambda _, r=_route: ui.navigate.to(r)).props("flat dense no-caps color=primary")
 
     # --- KPI tiles: the at-a-glance headline row ---
     over_budget = bool(overall_budget and overall_budget.monthly_amount and spent_this_month > overall_budget.monthly_amount)
@@ -825,13 +902,14 @@ def dashboard():
             sub=(f"of {CUR}{overall_budget.monthly_amount:,.0f} budget" if has_budget else "this month"),
             meter=(spent_this_month, overall_budget.monthly_amount) if has_budget else None,
         )
-        net_sign = "+" if net_this_month >= 0 else "−"
-        kpi_tile(
-            "Net this month", f"{net_sign}{CUR}{abs(net_this_month):,.0f}",
-            "trending_up" if net_this_month >= 0 else "trending_down",
-            EMERALD if net_this_month >= 0 else RED,
-            sub=f"{CUR}{income_this_month:,.0f} in − {CUR}{spent_this_month:,.0f} out",
-        )
+        if income_module:
+            net_sign = "+" if net_this_month >= 0 else "−"
+            kpi_tile(
+                "Net this month", f"{net_sign}{CUR}{abs(net_this_month):,.0f}",
+                "trending_up" if net_this_month >= 0 else "trending_down",
+                EMERALD if net_this_month >= 0 else RED,
+                sub=f"{CUR}{income_this_month:,.0f} in − {CUR}{spent_this_month:,.0f} out",
+            )
 
     # --- Today: nutrition, what to watch, and water -- navigable day by day ---
     LIMIT_FIELDS = [
@@ -963,13 +1041,15 @@ def dashboard():
     with card_box().classes("w-full"):
         section_header("This month", icon="account_balance_wallet", icon_color=EMERALD,
                        subtitle=today.strftime("%B %Y"))
+        _month_rows = []
+        if income_module:
+            _month_rows.append(("Income", f"{CUR}{income_this_month:,.2f}", EMERALD))
+        _month_rows.append(("Spent", f"{CUR}{spent_this_month:,.2f}", AMBER))
+        if income_module:
+            _month_rows.append(("Net", f"{'+' if net_this_month >= 0 else '−'}{CUR}{abs(net_this_month):,.2f}",
+                                EMERALD if net_this_month >= 0 else RED))
         with ui.row().classes("w-full gap-3 flex-wrap"):
-            for lbl, val, col in [
-                ("Income", f"{CUR}{income_this_month:,.2f}", EMERALD),
-                ("Spent", f"{CUR}{spent_this_month:,.2f}", AMBER),
-                ("Net", f"{'+' if net_this_month >= 0 else '−'}{CUR}{abs(net_this_month):,.2f}",
-                 EMERALD if net_this_month >= 0 else RED),
-            ]:
+            for lbl, val, col in _month_rows:
                 with ui.column().classes("gap-0 flex-1 min-w-[90px]"):
                     ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
                     ui.label(val).classes("text-xl font-bold").style(f"color:{col}")

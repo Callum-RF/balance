@@ -20,6 +20,7 @@ from nicegui import app, ui
 from sqlmodel import Session, select
 
 from backend.database import engine, RECEIPTS_DIR
+from backend.modules import MODULES, MODULE_TIERS, MODULES_SENTINEL
 from backend.models import (
     Category, Transaction, FoodLog, WaterLog, WaterLogCreate,
     UserProfile, NutrientGoals, BudgetTarget, PantryItem, Subscription,
@@ -127,30 +128,11 @@ for _field_cls in (ui.input, ui.number, ui.select, ui.textarea):
     _field_cls.default_props("outlined dense")
 
 # --- Feature modules -------------------------------------------------------
-# Optional areas of the app that can be switched on/off in Settings > Modules.
-# Core nav items (module key = None below) are always shown. Phase 1 ships every
-# module ON, so nothing changes by default -- the mechanism just becomes
-# available; Phase 2 sets the lean shipped defaults. `tier` is grouping metadata
-# for the Settings screen (and a future "lean preset").
-#   key:            (label,                  tier,     default_on)
-MODULES = {
-    "income":        ("Income",               "money",  True),
-    "networth":      ("Accounts & Net Worth", "money",  True),
-    "subscriptions": ("Subscriptions",        "money",  True),
-    "scheduled":     ("Scheduled",            "money",  True),
-    "prices":        ("Prices",               "money",  True),
-    "forecast":      ("Forecast",             "money",  True),
-    "savings":       ("Savings Goals",        "money",  True),
-    "recipes":       ("Recipes",              "health", True),
-    "pantry":        ("Pantry",               "health", True),
-    "shopping":      ("Shopping",             "health", True),
-    "import":        ("Import Statement",     "power",  True),
-    "reports":       ("Monthly Report",       "power",  True),
-}
-
-# Ordered (tier_key, tier_label) for grouping the Settings > Modules toggles.
-MODULE_TIERS = [("money", "Money"), ("health", "Health"), ("power", "Power / Advanced")]
-
+# The MODULES / MODULE_TIERS registry lives in backend.modules (shared with the
+# DB backfill). Core nav items (module key = None) are always shown; optional
+# modules ship OFF for a fresh install (lean defaults) and are toggled in
+# Settings > Modules. Existing installs are backfilled to all-on on upgrade.
+#
 # NAV_ITEMS / BOTTOM_NAV_ITEMS: (label, route, icon, module_key). module_key None
 # = core (always shown); otherwise the item appears only when that module is on.
 NAV_ITEMS = [
@@ -220,6 +202,40 @@ def set_module_enabled(module_key: str, value: bool) -> None:
         settings.modules_json = json.dumps(overrides)
         session.add(settings)
         session.commit()
+
+
+def set_all_modules(value: bool) -> None:
+    """Preset: enable every module (value=True) or reset to the lean defaults
+    (value=False -> only the sentinel is kept, so registry defaults apply)."""
+    data = {MODULES_SENTINEL: True}
+    if value:
+        for key in MODULES:
+            data[key] = True
+    with Session(engine) as session:
+        settings = session.exec(select(AppSettings)).first()
+        settings.modules_json = json.dumps(data)
+        session.add(settings)
+        session.commit()
+
+
+def _render_module_disabled() -> None:
+    """Placeholder shown when a disabled module's page is reached by direct URL."""
+    with ui.column().classes("w-full items-center gap-2 mt-16 text-center"):
+        ui.icon("visibility_off").classes("text-5xl").style(f"color:{TEXT_DIM}")
+        ui.label("This section is turned off").classes("text-lg font-semibold")
+        ui.label("Enable it under Settings → Modules.").classes("text-sm").style(f"color:{TEXT_DIM}")
+        ui.button("Open Settings", icon="settings",
+                  on_click=lambda: ui.navigate.to("/settings")).props("unelevated no-caps color=primary").classes("mt-1")
+
+
+def _module_guard(page_fn, module_key):
+    """Wrap a page so it renders a 'turned off' notice when its module is disabled."""
+    def wrapped():
+        if not module_enabled(module_key):
+            _render_module_disabled()
+            return
+        return page_fn()
+    return wrapped
 
 
 def inject_theme():
@@ -4342,8 +4358,17 @@ def settings_page():
                     lambda e, k=key: toggle_module(k, e.value)
                 )
 
-        ui.button("Reload to apply", icon="refresh",
-                  on_click=lambda: ui.run_javascript("location.reload()")).props("flat dense no-caps color=primary").classes("mt-3")
+        def apply_preset(value):
+            set_all_modules(value)
+            ui.run_javascript("location.reload()")
+
+        with ui.row().classes("gap-2 mt-3 flex-wrap"):
+            ui.button("Enable all", icon="done_all",
+                      on_click=lambda: apply_preset(True)).props("flat dense no-caps color=primary")
+            ui.button("Lean defaults", icon="filter_list_off",
+                      on_click=lambda: apply_preset(False)).props("flat dense no-caps color=primary")
+            ui.button("Reload to apply", icon="refresh",
+                      on_click=lambda: ui.run_javascript("location.reload()")).props("flat dense no-caps")
 
     # --- categories ---
     with card_box().classes("w-full max-w-2xl"):
@@ -5307,6 +5332,16 @@ ROUTES = {
     "/profile": profile_page,
     "/settings": settings_page,
 }
+
+# Route -> module gate. Core routes (dashboard, transactions/add, food/add,
+# profile, settings) are omitted = always reachable. Disabled routes render the
+# "turned off" notice instead of the page, so a hidden area can't be opened by
+# typing its URL. Built from the nav registry, plus /add-income (Income module).
+ROUTE_MODULE = {route: mod for _, route, _, mod in NAV_ITEMS if mod}
+ROUTE_MODULE["/add-income"] = "income"
+for _route, _mod in ROUTE_MODULE.items():
+    if _route in ROUTES:
+        ROUTES[_route] = _module_guard(ROUTES[_route], _mod)
 
 
 @ui.page("/")

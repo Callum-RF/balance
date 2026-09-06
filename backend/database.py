@@ -2,6 +2,7 @@
 SQLite engine + session management, schema auto-migration, and
 default-category seeding.
 """
+import json
 import os
 from typing import Generator
 
@@ -9,6 +10,7 @@ from sqlalchemy import inspect, text, Boolean, event
 from sqlmodel import SQLModel, Session, create_engine, select
 
 from backend.models import Category, UserProfile, NutrientGoals, AppSettings
+from backend.modules import MODULES, MODULES_SENTINEL
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -65,6 +67,7 @@ def create_db_and_tables() -> None:
     _migrate_missing_columns()            # adds any new columns on tables that already existed
     _seed_default_categories()
     _seed_singleton_rows()
+    _backfill_modules_defaults()          # keep existing installs all-on; fresh installs stay lean
 
 
 def _check_integrity() -> None:
@@ -123,7 +126,32 @@ def _seed_singleton_rows() -> None:
         if not session.exec(select(NutrientGoals)).first():
             session.add(NutrientGoals())
         if not session.exec(select(AppSettings)).first():
-            session.add(AppSettings())
+            # Fresh install: stamp the sentinel so no module keys are set and the
+            # lean registry defaults apply (backfill will then skip this row).
+            session.add(AppSettings(modules_json=json.dumps({MODULES_SENTINEL: True})))
+        session.commit()
+
+
+def _backfill_modules_defaults() -> None:
+    """One-time: on an install that predates lean module defaults, make every
+    module explicitly enabled so upgrading never hides a section that was on.
+    Fresh installs are seeded already stamped, so this skips them and they keep
+    the lean defaults. Idempotent via the sentinel key."""
+    with Session(engine) as session:
+        settings = session.exec(select(AppSettings)).first()
+        if not settings:
+            return
+        try:
+            data = json.loads(settings.modules_json) if settings.modules_json else {}
+        except (ValueError, TypeError):
+            data = {}
+        if data.get(MODULES_SENTINEL):
+            return  # already processed (fresh-seeded or previously backfilled)
+        for key in MODULES:
+            data.setdefault(key, True)  # preserve pre-lean all-on
+        data[MODULES_SENTINEL] = True
+        settings.modules_json = json.dumps(data)
+        session.add(settings)
         session.commit()
 
 

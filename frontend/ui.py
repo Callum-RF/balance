@@ -800,6 +800,10 @@ def dashboard():
         overall_budget = session.exec(select(BudgetTarget).where(BudgetTarget.category_id == None)).first()  # noqa: E711
         category_budgets = session.exec(select(BudgetTarget).where(BudgetTarget.category_id != None)).all()  # noqa: E711
         categories = {c.id: c.name for c in session.exec(select(Category)).all()}
+        # "First run" = a genuinely fresh install (nothing logged yet). Drives the
+        # welcome card below; auto-clears the moment anything is logged.
+        first_run = (session.exec(select(Transaction)).first() is None
+                     and session.exec(select(FoodLog)).first() is None)
 
     month_spend_by_category: dict = {}
     for t in month_transactions:
@@ -810,6 +814,27 @@ def dashboard():
     income_this_month = sum(i.amount for i in month_income)
     net_this_month = income_this_month - spent_this_month
     income_module = module_enabled("income")
+
+    # --- First-run welcome: state the "why" and offer the first win, so a new
+    # user understands the app before entering any data. Auto-hides once anything
+    # is logged, so it never nags an established user. ---
+    if first_run:
+        with card_box().classes("w-full"):
+            ui.label("Welcome to Balance").classes("text-xl font-bold")
+            ui.label("Track what you spend and what it does to your body — in one place.").classes(
+                "text-sm").style(f"color:{TEXT_DIM}")
+            ui.label(
+                "Log one expense and one meal and the dashboard comes alive — you'll see how "
+                "your money and your health line up. No lengthy setup: targets have sensible "
+                "defaults you can tweak any time."
+            ).classes("text-sm mt-2")
+            with ui.row().classes("gap-2 flex-wrap mt-3"):
+                ui.button("Add your first expense", icon="add",
+                          on_click=lambda: ui.navigate.to("/add-transaction")).props("unelevated no-caps color=primary")
+                ui.button("Log your first meal", icon="restaurant",
+                          on_click=lambda: ui.navigate.to("/add-food")).props("unelevated no-caps color=primary")
+            ui.label("This welcome disappears once you start logging.").classes(
+                "text-xs mt-2").style(f"color:{TEXT_DIM}")
 
     # --- Quick actions: the primary "what do I do next" ---
     with ui.row().classes("w-full gap-2 flex-wrap mt-1 mb-1"):

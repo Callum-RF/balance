@@ -297,6 +297,8 @@ def inject_theme():
         }}
         /* Softer, rounder buttons (leave round/fab buttons circular). */
         .q-btn:not(.q-btn--round):not(.q-btn--fab) {{ border-radius: 12px; }}
+        /* Sentence-case buttons and tabs app-wide instead of Quasar's shouting UPPERCASE. */
+        .q-btn, .q-tab {{ text-transform: none; }}
 
         /* Dropdowns, text inputs, number inputs, date fields -- consistent
            dark, rounded, filled fields instead of Quasar's default underline */
@@ -792,6 +794,34 @@ def thin_meter(current: float, goal: float, color: str, height: str = "h-1.5"):
         ui.element("div").classes(f"rounded-full {height}").style(f"background:{color}; width:{pct}%")
 
 
+def ring_gauge(label: str, current: float, goal: float, unit: str, color: str, size: int = 108):
+    """A donut gauge -- a coloured arc of current/goal around a faint track with
+    the value in the centre and label + goal beneath. The dashboard's headline
+    health read: rings rather than flat bars, and the round shape is a
+    deliberate break from the app's rectangles."""
+    current = current or 0
+    goal = goal or 0
+    pct = min(current / goal, 1.0) if goal else 0.0
+    r = 42
+    circ = 2 * 3.141592653589793 * r
+    dash = circ * pct
+    val = f"{current:,.0f}"
+    goal_txt = f"of {goal:,.0f} {unit}" if goal else f"{unit} (no goal)"
+    svg = f'''
+      <svg viewBox="0 0 100 100" style="width:{size}px;height:{size}px">
+        <circle cx="50" cy="50" r="{r}" fill="none" stroke="{BORDER}" stroke-width="8"/>
+        <circle cx="50" cy="50" r="{r}" fill="none" stroke="{color}" stroke-width="8"
+                stroke-linecap="round" stroke-dasharray="{dash:.2f} {circ - dash:.2f}"
+                transform="rotate(-90 50 50)"/>
+        <text x="50" y="47" text-anchor="middle" font-size="20" font-weight="700" fill="{TEXT}">{val}</text>
+        <text x="50" y="64" text-anchor="middle" font-size="10" fill="{TEXT_DIM}">{unit}</text>
+      </svg>'''
+    with ui.column().classes("items-center gap-0.5"):
+        ui.html(svg)
+        ui.label(label).classes("text-sm font-semibold leading-tight")
+        ui.label(goal_txt).classes("text-xs").style(f"color:{TEXT_DIM}")
+
+
 def kpi_tile(label: str, value: str, icon: str, accent: str = None,
              sub: str = None, meter=None):
     """Compact headline metric: icon chip, small label, big value, optional
@@ -1115,10 +1145,11 @@ def dashboard():
                 else:
                     nxt.tooltip("Next day")
 
-            progress_row("Calories", cals, goals.calories, " kcal", info_key="calories")
-            progress_row("Protein", protein, goals.protein_g, "g", info_key="protein_g")
-            progress_row("Carbs", carbs, goals.carbs_g, "g", info_key="carbs_g")
-            progress_row("Fat", fat, goals.fat_g, "g", info_key="fat_g")
+            with ui.grid().classes("w-full grid-cols-2 sm:grid-cols-4 gap-2 gap-y-4 mt-1 justify-items-center"):
+                ring_gauge("Calories", cals, goals.calories, "kcal", INDIGO)
+                ring_gauge("Protein", protein, goals.protein_g, "g", EMERALD)
+                ring_gauge("Carbs", carbs, goals.carbs_g, "g", AMBER)
+                ring_gauge("Fat", fat, goals.fat_g, "g", VIOLET)
 
             # Surface only the limits actually worth watching as pills, rather
             # than burying every limit in an always-collapsed expansion.
@@ -2203,7 +2234,7 @@ def add_transaction_page():
 
 
 def transactions_page():
-    ui.label("Transactions").classes("text-2xl font-bold")
+    page_header("Transactions", "Every expense, searchable and categorised.", icon="receipt_long")
 
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
@@ -2510,7 +2541,7 @@ def add_income_page():
 
 
 def income_page():
-    ui.label("Income").classes("text-2xl font-bold")
+    page_header("Income", "What's coming in, by source and month.", icon="payments")
 
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
@@ -2729,11 +2760,9 @@ def income_page():
 # Import bank statement (CSV or PDF)
 # ---------------------------------------------------------------------------
 def import_statement_page():
-    ui.label("Import Statement").classes("text-2xl font-bold")
-    ui.label(
-        "Import transactions and income from a CSV or PDF bank statement instead of "
-        "entering them one at a time. Nothing is saved until you review and confirm."
-    ).classes("text-sm mb-2").style(f"color:{TEXT_DIM}")
+    page_header("Import Statement",
+                "Bring in a CSV or PDF bank statement — nothing saves until you review and confirm.",
+                icon="upload_file")
 
     step_container = ui.column().classes("w-full gap-4")
     state = {
@@ -3292,7 +3321,7 @@ def add_food_page():
 
 
 def food_log_page():
-    ui.label("Food Log").classes("text-2xl font-bold")
+    page_header("Food Log", "What you ate today, measured against your targets.", icon="restaurant")
 
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
@@ -3528,7 +3557,7 @@ def food_log_page():
 # Pantry
 # ---------------------------------------------------------------------------
 def pantry_page():
-    ui.label("Pantry").classes("text-2xl font-bold")
+    page_header("Pantry", "What's in stock, with cost and macros.", icon="kitchen")
 
     @ui.refreshable
     def content():
@@ -3654,7 +3683,7 @@ def pantry_page():
 # Subscriptions
 # ---------------------------------------------------------------------------
 def subscriptions_page():
-    ui.label("Subscriptions").classes("text-2xl font-bold")
+    page_header("Subscriptions", "Recurring spend and what's due next.", icon="autorenew")
 
     @ui.refreshable
     def content():
@@ -3845,8 +3874,7 @@ def subscriptions_page():
 # Prices (grocery price / inflation tracking)
 # ---------------------------------------------------------------------------
 def prices_page():
-    ui.label("Prices").classes("text-2xl font-bold")
-    ui.label("Track how much regular grocery items cost over time.").style(f"color:{TEXT_DIM}")
+    page_header("Prices", "Track what staple grocery items cost over time.", icon="trending_up")
 
     with card_box().classes("w-full max-w-xl"):
         section_header("Log a price", icon="sell", icon_color=EMERALD)
@@ -4058,10 +4086,9 @@ def prices_page():
 # Caloric ROI Forecast
 # ---------------------------------------------------------------------------
 def forecast_page():
-    ui.label("Forecast").classes("text-2xl font-bold")
-    ui.label(
-        "Projects where your weight and spending are headed if your last 30 days continue unchanged."
-    ).style(f"color:{TEXT_DIM}")
+    page_header("Forecast",
+                "Where your weight and spending are headed if your last 30 days continue.",
+                icon="insights")
 
     months_select = ui.select({1: "1 month", 6: "6 months", 12: "12 months"}, value=6, label="Time horizon").props("dense options-dense").classes("w-48")
     forecast_container = ui.column().classes("w-full gap-4")
@@ -4652,7 +4679,7 @@ def _hash_pin(pin: str, salt: str) -> str:
 
 
 def settings_page():
-    ui.label("Settings").classes("text-2xl font-bold")
+    page_header("Settings", "Modules, categories, security and backups.", icon="settings")
     settings = load_app_settings()
 
     # --- currency ---
@@ -4919,7 +4946,7 @@ def scheduled_page():
     from backend.recurring import post_now, skip_next
     from backend.cashflow import cashflow_summary
 
-    ui.label("Scheduled").classes("text-2xl font-bold")
+    page_header("Scheduled", "Recurring transactions and upcoming cashflow.", icon="event_repeat")
 
     @ui.refreshable
     def content():
@@ -5109,7 +5136,7 @@ def scheduled_page():
 def recipes_page():
     from backend.recipes import log_recipe, recipe_totals, mark_recipe_ingredients_used
 
-    ui.label("Recipes").classes("text-2xl font-bold")
+    page_header("Recipes", "Meals from your pantry, costed per serving.", icon="menu_book")
 
     @ui.refreshable
     def content():
@@ -5257,7 +5284,7 @@ def recipes_page():
 
 
 def shopping_page():
-    ui.label("Shopping List").classes("text-2xl font-bold")
+    page_header("Shopping List", "What to buy, linked to pantry and spend.", icon="shopping_cart")
 
     @ui.refreshable
     def content():
@@ -5407,7 +5434,7 @@ def shopping_page():
 
 
 def savings_page():
-    ui.label("Savings Goals").classes("text-2xl font-bold")
+    page_header("Savings Goals", "Targets, pace, and what it takes to hit them.", icon="savings")
     @ui.refreshable
     def content():
         today = date.today()
@@ -5539,7 +5566,7 @@ def savings_page():
 def accounts_page():
     from backend.networth import snapshot_if_due, ASSET_TYPES, LIABILITY_TYPES, TYPE_LABELS
 
-    ui.label("Accounts & Net Worth").classes("text-2xl font-bold")
+    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.", icon="account_balance")
 
     @ui.refreshable
     def content():
@@ -5654,7 +5681,7 @@ def accounts_page():
 def reports_page():
     from backend.report import monthly_report, report_html
 
-    ui.label("Monthly Report").classes("text-2xl font-bold")
+    page_header("Monthly Report", "A shareable summary of your month.", icon="summarize")
     today = date.today()
     opts, y, m = {}, today.year, today.month
     for _ in range(12):

@@ -12,6 +12,7 @@ It's a single-process **FastAPI + SQLModel + SQLite + NiceGUI** app I built and
 self-host — running as a background service and reachable from my phone over
 Tailscale as an installable PWA.
 
+[![tests](https://github.com/Callum-RF/balance/actions/workflows/tests.yml/badge.svg)](https://github.com/Callum-RF/balance/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)

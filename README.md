@@ -1,316 +1,154 @@
 # Balance
 
-Personal expense + nutrition tracker. FastAPI + SQLite backend, NiceGUI
-frontend, single process, single database file. Runs on your desktop as a
-Windows service (NSSM) or Linux service (systemd), reachable from your
-phone over Tailscale.
+**Track what you spend *and* what it does to your body — in one place.**
 
-## Run it
+Balance is a self-hosted personal tracker that unifies expense tracking and
+nutrition tracking, because the two are the same daily decisions seen from
+different angles: the coffee is £3.10 *and* 120 kcal; the weekly shop is a
+budget line *and* a week of meals. Most apps do one side well and ignore the
+other. Balance sits on the intersection.
+
+It's a single-process **FastAPI + SQLModel + SQLite + NiceGUI** app I built and
+self-host — running as a background service and reachable from my phone over
+Tailscale as an installable PWA.
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![NiceGUI](https://img.shields.io/badge/UI-NiceGUI-4051B5)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/license-personal%20project-lightgrey)
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+---
+
+## Why it's built this way
+
+The design turns on one idea — **the money × health intersection** — and that
+premise is used as a filter for what belongs in the product:
+
+- **Cost-per-macro.** Balance ranks your pantry by *protein per £*, so "eat well
+  on a budget" becomes a number instead of a vibe.
+- **Eating out, costed both ways.** Log a meal out and it records the £ *and* the
+  kcal in one entry.
+- **Everything else earns its place.** Single-sided features (net worth, price
+  tracking, recipes, forecasting…) are **optional modules, off by default** — a
+  fresh install is deliberately lean, and you switch on what you want in
+  Settings.
+
+It's **local-first and single-user by design**: your combined financial + health
+data never leaves your machine — no accounts, no cloud, no telemetry.
+
+---
+
+## Screenshots
+
+> Rendered with generated demo data — no real personal finances shown.
+
+| | |
+|---|---|
+| **Dashboard** — time-aware greeting, "needs your attention" nudges, ring gauges for calories & macros, live budget burn-down. | **Money × health** — cost-per-macro ranking, computed month-over-month insights, and a savings chart with a cumulative "total saved" line. |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Insights](docs/screenshots/money-health.png) |
+| **Transactions** — searchable, categorised, CSV export, per-row context tags. | **Food Log** — meals against your daily targets, macros, barcode lookup. |
+| ![Transactions](docs/screenshots/transactions.png) | ![Food Log](docs/screenshots/food-log.png) |
+| **Forecast** — TDEE *calibrated from your own weight + intake history*, not a population formula. | **Pantry** — stock with cost + macros, expiry alerts, waste tracking. |
+| ![Forecast](docs/screenshots/forecast.png) | ![Pantry](docs/screenshots/pantry.png) |
+
+---
+
+## Highlights I'm proud of
+
+- **Metabolism calibrated from your own data.** The forecast starts from
+  Mifflin-St Jeor, but once there's enough logged weight + intake it solves the
+  energy-balance identity (`TDEE = avg_intake − ΔW·7700/days`) to report your
+  *actual* maintenance calories — a real measurement from your history, with the
+  assumptions stated in plain English rather than hidden.
+- **Bank-statement import** (CSV + PDF) with per-row auto-categorisation
+  (merchant-history → UK-merchant keyword map), duplicate detection, and a
+  one-click undo — nothing is written until you review and confirm.
+- **A feature-flag module system.** A registry + persisted overrides drive the
+  nav and route guards, with a one-time backfill so upgrading an existing
+  install never hides a section while fresh installs stay lean.
+- **Zero-downtime schema evolution.** A lightweight auto-migration adds new
+  model columns on startup, so the single SQLite file upgrades in place.
+- **A considered design system.** One theme (light/dark, system-aware), a shared
+  page-header + summary-strip + card language, ring-gauge dashboards, and a PWA
+  manifest so it installs to a phone home screen.
+
+## Features at a glance
+
+- **Dashboard** — verb-driven nudges (budget pace, protein gap, subs due),
+  ring gauges, water logging, month income/spend/net with budget bars, savings
+  trend, computed insights, habit streaks.
+- **Transactions & Income** — add/edit/delete, search + filter, CSV export,
+  context tags, spend/income trend and category charts.
+- **Food Log** — macros + micros, Open Food Facts barcode lookup, an "eaten out"
+  toggle that logs the meal *and* the spend in one action.
+- **Pantry / Recipes / Shopping** — stock with cost + macros, expiry & waste
+  tracking, recipes costed per serving, a shopping list wired to both.
+- **Subscriptions & Scheduled** — recurring spend normalised to a monthly total,
+  auto-detection of untracked recurring payments, forward cashflow.
+- **Profile & Goals** — profile-driven targets with a just-in-time estimator,
+  weight trend with smoothing, budgets, one-file JSON backup.
+- **Settings** — currency, category management, per-module toggles, an optional
+  per-session PIN lock.
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| API | FastAPI + Uvicorn |
+| Data | SQLModel over SQLite (WAL, in-process daily backups) |
+| UI | NiceGUI (Quasar/Vue under the hood), ECharts for charts |
+| Integrations | Open Food Facts (barcodes), pypdf (statement parsing) |
+| Packaging | Docker + Compose; runs as a Windows (NSSM) or Linux (systemd) service |
+| Tests | pytest — feature, core-logic, and theme suites |
+
+## Architecture
+
+- **One process, one port, one file.** `run.py` serves the JSON API and the web
+  UI together; all state lives in a single `data/app.db`.
+- **UI reads the database directly** via SQLModel sessions rather than making
+  HTTP calls back to its own API — same process, so it skips pointless network
+  round-trips. The REST API (`/docs`) shares the models and is there to script
+  against.
+- **Local-first privacy model.** The app has no login; **the network is the
+  boundary.** `run.py` binds `127.0.0.1` and Tailscale fronts it, so it's
+  reachable only from your own devices and simply doesn't exist to the public
+  internet. (Full reasoning in [`DEPLOY.md`](DEPLOY.md).)
+
+## Run it locally
 
 ```bash
-cd expense-nutrition-tracker
+git clone <your-repo-url> balance
+cd balance
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Linux/Mac
+venv\Scripts\activate          # Windows  (source venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
 python run.py
 ```
 
-Open **http://localhost:8000**. API docs at **http://localhost:8000/docs**.
+Then open **http://localhost:8000** (API docs at **/docs**).
 
-If you moved this folder after creating the venv, delete `venv/` and
-recreate it — Windows venvs bake in an absolute path and break on a move.
+Or with Docker:
 
-## What's in this version
+```bash
+docker compose up -d
+```
 
-**Dashboard** — a glanceable top row of KPI tiles (calories today, spend
-this month vs. budget, net), then a **Today** card you can page back through
-day by day (‹ ›) showing that day's macros, a "things to watch" strip that
-only surfaces limits you're actually near or over, and inline water
-logging. Below that, a **This month** card (income / spent / net plus
-overall and per-category budget bars) and an **Overview** section over a
-chosen window (day → 1 year) with a spending-trend bar chart, a category
-pie whose legend lets you exclude categories from the total, nutrition
-bars, and "vs previous period" change badges so the numbers have context.
+Full self-hosting guide — Docker, Windows/Linux services, Tailscale HTTPS, and
+installing as a phone PWA — is in **[`DEPLOY.md`](DEPLOY.md)**.
 
-**Transactions** — add/list/delete, categorized, with an optional context
-tag (alone / with friends / with family / work / other) to see how context
-affects spending. The log is searchable and filterable by merchant/notes
-text, category, and date range, and the currently-filtered set can be
-exported to CSV. A **Summary** tab charts spending over time (a per-day or
-per-month trend with an average line) and by category. Income has the same
-Log / Summary / Add layout, including its own income-trend chart and CSV
-export.
+## Tests
 
-**Import Statement** — bulk-import transactions and income from a CSV or
-PDF bank statement instead of entering them one at a time. CSV parsing is
-exact (structured data, nothing to guess). PDF parsing extracts real text
-and works well for genuine digital statements, but explicitly refuses and
-tells you to export a CSV instead if the PDF turns out to be a scanned
-image with no readable text — deliberately not repeating the mistake made
-with receipt scanning (see below). Nothing is saved until you've reviewed
-every row and confirmed; possible duplicates (matching an existing entry's
-date and amount) are flagged and unchecked by default. An "undo this
-import" option is available immediately after importing.
+```bash
+pytest
+```
 
-**Food Log** — add/list/delete, barcode lookup via Open Food Facts
-(cached locally), core macros plus an optional expandable section for
-sugar, fiber, sodium, saturated fat, trans fat, added sugar, alcohol, and
-caffeine. Also taggable by context.
+## Status
 
-**Pantry** — track what's in your fridge/freezer/pantry, grouped by
-location. Mark items consumed or wasted (wasted items roll up into a
-running "money lost to waste" total). Items expiring within 7 days are
-flagged, more urgently under 48 hours. A rough "runway" estimate shows how
-many days your current stock covers based on stored calories vs. your
-daily calorie goal.
-
-**Subscriptions** — track recurring payments (Amazon Prime, YouTube
-Premium, etc.), monthly or yearly, normalized into a single monthly total.
-Also surfaces **detected recurring payments**: merchants you're charged by
-on a regular monthly/yearly cadence with near-constant amounts but haven't
-set up as a subscription yet, each with a one-click "add as subscription".
-
-**Prices** — log prices for items you buy repeatedly and see the
-percentage change since you started tracking, a per-item line chart, and a
-"compare all (indexed)" overlay that rebases every tracked item to 100 at
-its first reading so items at different price points can be compared on
-relative change.
-
-**Profile & Goals** — date of birth (age calculated automatically), height,
-sex, activity level (described in plain terms, not just "moderate"), weight
-log, full control over your daily nutrient targets and limits (calories,
-macros, fiber, water, added sugar, saturated fat, trans fat, sodium,
-alcohol, caffeine), and an overall monthly budget plus optional
-**per-category budgets** that show as their own bars on the dashboard.
-Progress bars throughout the app pull from these goals; tap the ⓘ by any
-nutrient for a short structured explainer of what it does and what too
-little / too much looks like (general public-health reference info, not
-medical advice).
-
-**Settings** — pick your display currency (symbol only, no conversion),
-manage categories (add / rename inline / delete, with anything still using a
-deleted category safely moved to Uncategorized), and set an optional
-**PIN lock** that gates the UI per browser session (stored salted-hashed;
-note the JSON API under `/api` is not PIN-gated — Tailscale remains the real
-security boundary). A **Backup** card on Profile & Goals downloads every
-table as one dated JSON file.
-
-**Editing & quality-of-life** — every transaction, income, and food entry
-can be edited in a prefilled dialog; deletes show an **Undo** banner instead
-of being instantly permanent; the Food Log and Income Add tabs lead with
-one-tap **Quick add** chips of your recent entries (log yesterday's porridge
-or this month's salary without retyping); the dashboard shows a 6-month
-**Savings** chart (net income − spending) and an **Insights** card calling
-out categories that moved noticeably vs the same point last month.
-
-**Design & mobile** — the whole UI shares one design system (icon-led
-section headers, status pills, KPI tiles, consistent empty states) built on
-a dark, Linear-inspired theme. Every page is responsive and tested down to
-phone width, and the app ships a PWA manifest so you can "Add to Home
-Screen" on your phone and launch it like a native app.
-
-## Known simplifications / what's next
-
-- **Receipt OCR was tried and scrapped.** An earlier version attempted to
-  auto-read merchant/total/date off a photographed receipt via Tesseract.
-  In practice, thermal-printer receipt photos were too unreliable for a
-  general-purpose OCR engine — accuracy varied a lot and wasn't trustworthy
-  enough to build on. Add Transaction now instead lets you **attach a
-  receipt photo purely for your own reference** (stored in `data/receipts/`,
-  viewable later from the Transactions list) while you type the actual
-  merchant/amount/date yourself. No pip package or separate program install
-  needed anymore as a result.
-- **Barcode scanning** (Add Food) needs a live device/browser to fully
-  verify — the camera/JS parts couldn't be tested in the environment this
-  was built in. If it misbehaves, the specific error message (or browser
-  console output) will make fixing it fast.
-- **Pantry items don't auto-fill nutrition from barcode** the way Food Log
-  entries do — added manually for now, since pantry quantities are in
-  mixed units (g/kg/ml/l/unit) which complicates auto-scaling.
-- The Profile page's "sex" and "activity level" fields feed the Forecast
-  page's BMR/TDEE estimate; the "sex" field's only effect is a small
-  constant offset in that formula, nothing else.
-
-## Architecture note
-
-Every page/section reads and writes the database directly via SQLModel
-sessions (see `frontend/ui.py`), rather than making HTTP calls to the
-FastAPI backend from the frontend. Same process, so this avoids pointless
-network round-trips — but it does mean the JSON API (`/docs`) and the UI
-share models but aren't strictly required to go through each other. The
-API is there for you to script against directly if useful, and is the
-natural place to add things like a receipt-upload endpoint later.
-
-## Deployment (recap)
-
-The app itself is plain Python and already runs the same way on Windows,
-Linux, and Mac — nothing in the code is Windows-specific. What differs
-between platforms is only how you keep it running in the background.
-
-### Windows
-
-NSSM, pointed at `venv\Scripts\python.exe` running `run.py`, working
-directory = project root. (Full walkthrough earlier in this README/your
-setup history — `nssm install ExpenseTracker`, then `nssm start
-ExpenseTracker`.)
-
-### Linux (Mint, or any systemd-based distro)
-
-1. Set up the venv the normal way:
-   ```bash
-   cd expense-nutrition-tracker
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   deactivate
-   ```
-2. Create `/etc/systemd/system/balance.service`:
-   ```ini
-   [Unit]
-   Description=Balance expense & nutrition tracker
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=YOUR_USERNAME
-   WorkingDirectory=/home/YOUR_USERNAME/expense-nutrition-tracker
-   ExecStart=/home/YOUR_USERNAME/expense-nutrition-tracker/venv/bin/python run.py
-   Restart=on-failure
-   RestartSec=5
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-   (Replace `YOUR_USERNAME` and the path with your actual username and
-   wherever you put the project.)
-3. Enable and start it:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now balance.service
-   ```
-4. Check it's running and see logs if something's wrong:
-   ```bash
-   sudo systemctl status balance.service
-   journalctl -u balance.service -f
-   ```
-5. If you ever move the project folder, the same rule as Windows applies —
-   delete `venv/` and recreate it, since venvs bake in an absolute path
-   regardless of platform.
-
-### Android
-
-Balance doesn't run *on* Android — your phone is a client, not a host.
-The server (Windows or Linux machine, whichever you use) runs
-continuously; your phone just opens it in a browser over Tailscale, same
-as visiting any website. There's no separate Android build or install
-step beyond what's already covered under Tailscale + "Add to Home
-Screen" below — this isn't a gap, it's just how the architecture works
-(one server, any number of client devices).
-
-### Remote access (any host platform)
-
-Tailscale on the server + phone, same account on both, then open Balance
-through the [Ensemble launcher](../launcher/) at
-`https://balance.<your-tailnet>.ts.net` — see the section below, which sets
-up the HTTPS name and the proxy in front of the app.
-
-**Why Tailscale specifically, and keep it:** the app has **no login** — it
-holds your finances and health data but anything that can reach it sees
-everything. Tailscale *is* the security boundary here: only devices on
-your own tailnet can reach the server, and to the public internet the app
-simply doesn't exist (no open ports, nothing to scan). That's why remote
-access should go through Tailscale (or a comparable private VPN) rather than
-port-forwarding or a public tunnel (ngrok / Cloudflare Tunnel), which would
-expose an unauthenticated personal-data app to the world.
-
-- **`run.py` binds `127.0.0.1`, not `0.0.0.0`.** `tailscale serve` proxies
-  from localhost, so listening on every interface added nothing except
-  reachability from the local Wi-Fi — where, as above, nothing authenticates
-  in front of the API. Anyone on the same network could read and write your
-  finances by asking the port directly, without Tailscale being involved at
-  all. Localhost makes "Tailscale is the boundary" actually true rather than
-  merely intended.
-- This also means `http://<tailscale-ip>:8000` no longer works; go through
-  the HTTPS name. For a deliberate LAN run, set `BALANCE_HOST=0.0.0.0` —
-  and understand what that opens.
-- Keep your tailnet to your own devices. If you ever want to share Balance
-  with someone else, that's the point to add real authentication rather than
-  widen network/tailnet access.
-
-### A friendly, private URL — `https://balance.<your-tailnet>.ts.net`
-
-Goal: reach the app at a real name over HTTPS, while keeping it
-**private to your own devices**
-and **buying no domain**. Tailscale does all of this for free.
-
-> **Common wrong turn:** the **"Search domains"** field in Tailscale's DNS
-> settings does *not* rename your machine or set the app's URL — it only adds
-> a DNS *search suffix* (so a bare hostname gets a domain appended when you
-> look it up). Leave it alone; the settings that actually matter are
-> **MagicDNS**, the **machine name**, and **`tailscale serve`** below.
-
-1. **Enable MagicDNS.** Tailscale admin console → **DNS** tab → turn on
-   **MagicDNS**. This is what makes `<machine>.<tailnet>.ts.net` names
-   resolve for devices on your tailnet.
-2. **Enable HTTPS.** Same **DNS** tab → turn on **HTTPS Certificates**. This
-   lets Tailscale issue a real TLS cert for your machine's name (needed for
-   the secure `https://` URL and the Android PWA install).
-3. **Name the machine (optional but nicer).** Admin console → **Machines** →
-   click your server → the **⋮** menu → **Edit machine name** → e.g.
-   `balance`. Your tailnet name (the `...ts.net` part) is shown in the admin
-   console; the full address is `<machine-name>.<tailnet-name>.ts.net`.
-4. **Publish the app on HTTPS with `tailscale serve`.** On the server (keep
-   `python run.py` running on `:8000` as usual — `serve` just fronts it):
-   ```bash
-   sudo tailscale serve --bg 8000
-   ```
-   Then confirm the exact URL it gave you:
-   ```bash
-   tailscale serve status
-   ```
-   That prints something like `https://balance.tailXXXX.ts.net` → `http://127.0.0.1:8000`.
-   (Flag names shift slightly between Tailscale versions — `tailscale serve
-   --help` shows the exact form for yours. To stop: `tailscale serve reset`.)
-
-   There's a helper that does steps 4's start + status in one go (and can turn
-   it off again):
-   ```bash
-   scripts/serve.sh          # start serving and print the URL
-   scripts/serve.sh off      # stop serving (app keeps running locally)
-   ```
-5. **Open that `https://…ts.net` URL on your phone.** No IP, no port, HTTPS,
-   still only reachable from your own tailnet.
-
-If the name still won't resolve on the **phone**, check that the phone's
-Tailscale is connected and set to **use Tailscale DNS** (MagicDNS pushes the
-DNS config to each device; with that off, the `.ts.net` names won't resolve).
-
-**About the `tailXXXX` part of the name:** that middle chunk is your *tailnet
-name*, auto-generated by Tailscale. On a personal/individual account it's
-fixed — you can rename the *machine* (`balance`) but not the tailnet suffix,
-and you shouldn't try to swap in a custom hostname via local DNS because the
-HTTPS certificate is issued for the real `...ts.net` name and a mismatch
-breaks the padlock. In practice it doesn't matter: once you **Add to Home
-Screen**, you launch Balance from an icon labelled "Balance" and never see or
-type the URL again — the ugly suffix only lives in the address bar you stop
-using.
-
-### Installing as a PWA (Add to Home Screen)
-
-Balance ships a web manifest, icons, and a service worker, so it installs to
-your phone's home screen and launches full-screen like a native app. The one
-requirement is a **secure context** — HTTPS or `localhost`; plain
-`http://<tailscale-ip>:8000` doesn't count.
-
-- **iOS Safari** — Share → **Add to Home Screen** works even over plain HTTP;
-  you get the standalone, full-screen app either way.
-- **Android Chrome** — for the real "Install app" prompt you need HTTPS, i.e.
-  the `tailscale serve` URL from the section above. Open
-  `https://<machine>.<tailnet>.ts.net`, then Chrome menu → **Install app**.
-
-### Backups
-
-The whole app is one file, `data/app.db`, plus `data/receipts/` for
-attached receipt photos. Back them up however you like — the mechanism
-doesn't depend on which OS is hosting it.
+A personal project I actively use and self-host — single-user by design. It's
+not a product with other users, and it's shared here as a portfolio piece. The
+combined finance + health data model is deliberately kept local-first rather than
+built into a multi-user hosted service.

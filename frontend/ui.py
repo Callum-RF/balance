@@ -36,7 +36,7 @@ from backend.services.statement_import import (
 )
 from backend.routers.stats import period_bounds, NUTRIENT_FIELDS
 from backend.routers.profile import calculate_age, compute_weight_trend, WEIGHT_TREND_WINDOWS
-from backend.routers.forecast import compute_forecast
+from backend.routers.forecast import compute_forecast, estimate_bmr, ACTIVITY_MULTIPLIERS
 from backend.nutrient_info import NUTRIENT_INFO, CAFFEINE_LIKE_SUBSTANCES
 
 # ---------------------------------------------------------------------------
@@ -4310,6 +4310,14 @@ def profile_page():
     with card_box().classes("w-full max-w-2xl"):
         section_header("Daily nutrient goals", icon="flag", icon_color=INDIGO,
                        subtitle="Tap the ⓘ next to any field for what it does and why it matters.")
+        # Just-in-time estimate: fill the fields from the profile + latest weight
+        # rather than entering them by hand. Pick a direction, tap Estimate, review, Save.
+        with ui.column().classes("w-full gap-1 mb-2"):
+            ui.label("Not sure? Estimate from your profile & latest weight.").classes("text-xs").style(f"color:{TEXT_DIM}")
+            with ui.row().classes("items-center gap-2 flex-wrap"):
+                est_dir = ui.toggle({"maintain": "Maintain", "lose": "Lose fat", "gain": "Build muscle"},
+                                    value="maintain").props("dense no-caps toggle-color=primary")
+                est_btn = ui.button("Estimate", icon="auto_awesome").props("outline no-caps color=primary")
         with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0"):
             cal_g = goal_field("Calories (kcal)", goals.calories, "calories")
             protein_g = goal_field("Protein (g)", goals.protein_g, "protein_g")
@@ -4327,6 +4335,45 @@ def profile_page():
             alcohol_lim = goal_field("Alcohol limit (g)", goals.alcohol_limit_g, "alcohol_limit_g")
             caffeine_lim = goal_field("Caffeine limit (mg)", goals.caffeine_limit_mg, "caffeine_limit_mg")
         goals_result = ui.label().style(f"color:{EMERALD}").classes("mt-2")
+
+        def _estimate_targets():
+            direction = est_dir.value
+            with Session(engine) as session:
+                prof = session.exec(select(UserProfile)).first()
+                lw = session.exec(select(WeightLog).order_by(WeightLog.date.desc())).first()
+            age = calculate_age(prof.date_of_birth) if prof and prof.date_of_birth else None
+            height = prof.height_cm if prof else None
+            weight = lw.weight_kg if lw else None
+            sex = prof.sex if prof else None
+            activity = prof.activity_level if prof and prof.activity_level else "moderate"
+            missing = []
+            if not weight: missing.append("a weight entry")
+            if not height: missing.append("height")
+            if age is None: missing.append("date of birth")
+            if missing:
+                goals_result.set_text("Add " + ", ".join(missing) + " above so I can estimate.")
+                goals_result.style(f"color:{AMBER}")
+                return
+            tdee = estimate_bmr(weight, height, age, sex) * ACTIVITY_MULTIPLIERS.get(activity, 1.55)
+            if direction == "lose":
+                cals, ppk = tdee - 500, 2.0
+            elif direction == "gain":
+                cals, ppk = tdee + 350, 2.0
+            else:
+                cals, ppk = tdee, 1.8
+            cals = max(round(cals / 10) * 10, 1200)
+            protein = round(weight * ppk)
+            fat = round(cals * 0.25 / 9)
+            cal_g.value = cals
+            protein_g.value = protein
+            fat_g.value = fat
+            carbs_g.value = max(round((cals - protein * 4 - fat * 9) / 4), 0)
+            fiber_g.value = round(cals / 1000 * 14)
+            water_g.value = int(round(weight * 35 / 50) * 50)
+            goals_result.set_text(f"Estimated for '{direction}' at {activity} activity — review and Save.")
+            goals_result.style(f"color:{EMERALD}")
+
+        est_btn.on("click", lambda: _estimate_targets())
 
         def save_goals():
             with Session(engine) as session:

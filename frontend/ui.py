@@ -75,7 +75,7 @@ ACTIVE_THEME = "midnight"
 THEME_DARK = True
 BG = SURFACE = SURFACE_2 = BORDER = TEXT = TEXT_DIM = ""
 INDIGO = EMERALD = AMBER = RED = SKY = VIOLET = ""
-CARD = LIST_GROUP = ""
+CARD = LIST_GROUP = CARD_ACCENT = ""
 CHART_PALETTE: list = []
 PAGE = "w-full max-w-5xl mx-auto p-3 sm:p-6 gap-4 sm:gap-6"
 
@@ -83,13 +83,16 @@ PAGE = "w-full max-w-5xl mx-auto p-3 sm:p-6 gap-4 sm:gap-6"
 def apply_theme(name: str):
     """Point every design token at the named theme and rebuild the derived
     class strings. Takes effect on the next page render."""
-    global ACTIVE_THEME, THEME_DARK, CARD, LIST_GROUP, CHART_PALETTE
+    global ACTIVE_THEME, THEME_DARK, CARD, LIST_GROUP, CARD_ACCENT, CHART_PALETTE
     theme = THEMES.get(name, THEMES["midnight"])
     ACTIVE_THEME = name if name in THEMES else "midnight"
     THEME_DARK = theme["dark"]
     for key in _TOKEN_KEYS:
         globals()[key] = theme[key]
-    CARD = f"bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl p-3 sm:p-5 gap-3 w-full"
+    CARD = f"surface-card bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl p-4 sm:p-5 gap-3 w-full"
+    # Hero/accent variant of CARD: faint accent wash + a touch more lift, for the
+    # single "look here first" card on a screen (dashboard attention / welcome).
+    CARD_ACCENT = f"surface-card surface-card-accent border rounded-2xl p-4 sm:p-5 gap-3 w-full"
     # A bordered surface holding a day's list rows with hairline dividers --
     # the "grouped list" look used by Transactions / Food Log / Settings.
     LIST_GROUP = f"bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl w-full overflow-hidden gap-0 p-0"
@@ -163,6 +166,13 @@ BOTTOM_NAV_ITEMS = [
     ("Food Log", "/food-log", "restaurant", None),
     ("Pantry", "/pantry", "kitchen", "pantry"),
 ]
+
+# Spending that's a "want" rather than a "need" -- the flexible money a savings
+# goal can realistically be funded from. Used by the goal-coaching on /savings.
+DISCRETIONARY_CATEGORIES = {
+    "Dining Out", "Coffee/Snacks", "Entertainment", "Books", "Games",
+    "Streaming", "Hobbies", "Gifts", "Subscriptions", "Travel/Holidays",
+}
 
 
 def load_enabled_modules() -> dict:
@@ -275,16 +285,30 @@ def inject_theme():
             --q-primary: {INDIGO};
         }}
 
+        /* Cards float with soft depth instead of reading as hard outlined boxes. */
+        .surface-card {{
+            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 22px -12px rgba(0,0,0,.16);
+        }}
+        /* Hero/accent card: a faint accent wash + slightly stronger lift, for the
+           one "look here first" card on a screen. */
+        .surface-card-accent {{
+            background: linear-gradient(180deg, {INDIGO}14, {INDIGO}0a) !important;
+            border-color: {INDIGO}40 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 28px -14px {INDIGO}59;
+        }}
+        /* Softer, rounder buttons (leave round/fab buttons circular). */
+        .q-btn:not(.q-btn--round):not(.q-btn--fab) {{ border-radius: 12px; }}
+
         /* Dropdowns, text inputs, number inputs, date fields -- consistent
            dark, rounded, filled fields instead of Quasar's default underline */
         .q-field__label {{ color: {TEXT_DIM} !important; }}
         .q-field--outlined .q-field__control {{
             background: {SURFACE_2};
-            border-radius: 12px;
+            border-radius: 14px;
         }}
         .q-field--outlined .q-field__control:before {{
             border-color: {BORDER};
-            border-radius: 12px;
+            border-radius: 14px;
             transition: border-color .15s ease;
         }}
         .q-field--outlined .q-field__control:hover:before {{
@@ -304,7 +328,7 @@ def inject_theme():
         .q-menu {{
             background: {SURFACE} !important;
             border: 1px solid {BORDER};
-            border-radius: 12px;
+            border-radius: 14px;
             overflow-y: auto;
         }}
         .q-item {{ color: {TEXT}; }}
@@ -318,7 +342,7 @@ def inject_theme():
         .q-date {{
             background: {SURFACE} !important;
             color: {TEXT};
-            border-radius: 12px;
+            border-radius: 14px;
         }}
         .q-date__header {{ background: {INDIGO} !important; }}
         .q-date__calendar-item .q-btn {{ color: {TEXT}; }}
@@ -463,7 +487,7 @@ def shell():
         # Right side of the header: jump to the other apps on this node.
         app_switcher()
 
-    with ui.left_drawer().props("bordered breakpoint=1024 width=240").classes("p-3 gap-1").style(
+    with ui.left_drawer().props("bordered breakpoint=1024 width=216").classes("p-3 gap-0.5").style(
         f"background:{SURFACE}"
     ) as drawer:
         async def _close_drawer_on_mobile():
@@ -474,14 +498,39 @@ def shell():
                 drawer.hide()
 
         enabled_modules = load_enabled_modules()
-        for label, target, icon, mod in NAV_ITEMS:
-            if not module_enabled(mod, enabled_modules):
-                continue
+
+        def _nav_item(label, target, icon):
             with ui.link(target=target).classes(
-                "drawer-nav-item flex items-center gap-3 px-3 py-2 rounded-lg no-underline"
+                "drawer-nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg no-underline"
             ).style(f"color:{TEXT_DIM}").on("click", _close_drawer_on_mobile):
-                ui.icon(icon).classes("text-lg")
+                ui.icon(icon).classes("text-base")
                 ui.label(label).classes("text-sm")
+
+        def _section_label(text):
+            ui.label(text).classes("text-[10px] uppercase tracking-wider mt-3 mb-1 px-2.5").style(f"color:{TEXT_DIM}")
+
+        # Grouped, compact nav: core up top, optional areas under small section
+        # headers, Profile/Settings pinned below a divider. Sections with no
+        # enabled items are omitted, so a lean install just shows the essentials.
+        _bottom_routes = {"/profile", "/settings"}
+        _core = [it for it in NAV_ITEMS if it[3] is None and it[1] not in _bottom_routes]
+        _by_tier = {"money": [], "health": [], "power": []}
+        for it in NAV_ITEMS:
+            if it[3] and module_enabled(it[3], enabled_modules):
+                _by_tier[MODULES[it[3]][1]].append(it)
+
+        for label, target, icon, _mod in _core:
+            _nav_item(label, target, icon)
+        for _title, _key in [("Money", "money"), ("Health", "health"), ("More", "power")]:
+            if not _by_tier[_key]:
+                continue
+            _section_label(_title)
+            for label, target, icon, _mod in _by_tier[_key]:
+                _nav_item(label, target, icon)
+        ui.separator().classes("my-2 opacity-50")
+        for it in NAV_ITEMS:
+            if it[1] in _bottom_routes:
+                _nav_item(it[0], it[1], it[2])
 
     async def _sync_drawer_to_screen_width():
         # NiceGUI's own open-on-desktop auto-detection (which the drawer's
@@ -535,6 +584,12 @@ def goal_field(label: str, value, info_key: str):
 
 def card_box():
     return ui.column().classes(CARD)
+
+
+def card_box_accent():
+    """Accent 'hero' card -- same as card_box() but with a faint accent wash and
+    a touch more lift, for the one 'look here first' card on a screen."""
+    return ui.column().classes(CARD_ACCENT)
 
 
 def date_field(label_text: str = None, value=None):
@@ -720,7 +775,7 @@ def kpi_tile(label: str, value: str, icon: str, accent: str = None,
     if accent is None:  # resolve the live token, not the one baked at import
         accent = INDIGO
     with ui.element("div").classes(
-        f"flex-1 min-w-[150px] rounded-2xl p-3 sm:p-4 flex flex-col gap-1"
+        f"surface-card flex-1 min-w-[150px] rounded-2xl p-3 sm:p-4 flex flex-col gap-1"
     ).style(f"background:{SURFACE}; border:1px solid {BORDER};"):
         with ui.row().classes("items-center gap-2 no-wrap"):
             icon_chip(icon, accent, size="text-base")
@@ -783,9 +838,42 @@ def segmented(label: str, options, value):
 # ---------------------------------------------------------------------------
 def dashboard():
     today = date.today()
+    now = datetime.now()
+    yesterday = today - timedelta(days=1)
+
+    # Time-aware greeting -- a reason to open at any hour. Morning gives a
+    # yesterday recap + a nudge to start the day; midday a protein/lunch check;
+    # evening a today recap. Keeps the dashboard current instead of a static title.
+    with Session(engine) as session:
+        _g = session.exec(select(NutrientGoals)).first() or NutrientGoals()
+        _t_food = session.exec(select(FoodLog).where(FoodLog.date == today)).all()
+        _t_spend = sum(t.amount for t in session.exec(select(Transaction).where(Transaction.date == today)).all())
+        _y_food = session.exec(select(FoodLog).where(FoodLog.date == yesterday)).all()
+        _y_spend = sum(t.amount for t in session.exec(select(Transaction).where(Transaction.date == yesterday)).all())
+    _t_cal = sum(f.calories or 0 for f in _t_food)
+    _y_cal = sum(f.calories or 0 for f in _y_food)
+    _protein_now = sum(f.protein_g or 0 for f in _t_food)
+    _h = now.hour
+    if 5 <= _h < 12:
+        greeting = "Good morning"
+        if _y_spend or _y_cal:
+            focus = f"Yesterday: {CUR}{_y_spend:,.0f} spent · {_y_cal:,.0f} kcal. Log breakfast to start the day."
+        else:
+            focus = "A fresh day — log a meal or an expense to get going."
+    elif 12 <= _h < 18:
+        greeting = "Good afternoon"
+        if _g.protein_g and _protein_now < _g.protein_g:
+            focus = f"{_protein_now:,.0f}g protein so far — {_g.protein_g - _protein_now:,.0f}g to go. Logged lunch?"
+        elif _g.protein_g:
+            focus = f"Protein goal already hit ({_protein_now:,.0f}g) — nice. {CUR}{_t_spend:,.0f} spent so far."
+        else:
+            focus = f"{CUR}{_t_spend:,.0f} spent so far today."
+    else:
+        greeting = "Good evening"
+        focus = f"Today: {CUR}{_t_spend:,.0f} spent · {_t_cal:,.0f} kcal. Round off dinner and tomorrow's plan."
     with ui.column().classes("gap-0"):
-        ui.label("Dashboard").classes("text-2xl font-bold leading-tight")
-        ui.label(today.strftime("%A, %d %B %Y")).classes("text-sm").style(f"color:{TEXT_DIM}")
+        ui.label(greeting).classes("text-2xl font-bold leading-tight")
+        ui.label(focus).classes("text-sm").style(f"color:{TEXT_DIM}")
 
     with Session(engine) as session:
         goals = session.exec(select(NutrientGoals)).first() or NutrientGoals()
@@ -819,7 +907,7 @@ def dashboard():
     # user understands the app before entering any data. Auto-hides once anything
     # is logged, so it never nags an established user. ---
     if first_run:
-        with card_box().classes("w-full"):
+        with card_box_accent().classes("w-full"):
             ui.label("Welcome to Balance").classes("text-xl font-bold")
             ui.label("Track what you spend and what it does to your body — in one place.").classes(
                 "text-sm").style(f"color:{TEXT_DIM}")
@@ -899,7 +987,7 @@ def dashboard():
                            f"{len(_due)} subscription(s) renew this week ({CUR}{sum(s.amount for s in _due):,.0f})",
                            AMBER, "View", "/subscriptions"))
 
-    with card_box().classes("w-full"):
+    with card_box_accent().classes("w-full"):
         section_header("Needs your attention", icon="notifications_active", icon_color=AMBER)
         if not nudges:
             with ui.row().classes("items-center gap-2"):
@@ -5171,6 +5259,33 @@ def savings_page():
         today = date.today()
         with Session(engine) as session:
             goals = session.exec(select(SavingsGoal)).all()
+            _since = today - timedelta(days=90)
+            _recent = session.exec(select(Transaction).where(Transaction.date >= _since)).all()
+            _cat_name = {c.id: c.name for c in session.exec(select(Category)).all()}
+        # Average monthly "flexible" spend over the last ~90 days -- the pool a
+        # goal can be funded from without touching essentials.
+        discretionary_monthly = sum(
+            t.amount for t in _recent if _cat_name.get(t.category_id) in DISCRETIONARY_CATEGORIES
+        ) / 3.0
+
+        def _coach(per_month, remaining, disc):
+            """Turn a required monthly saving into honest, non-preachy guidance
+            tied to the person's actual flexible spending."""
+            per_week = per_month / 4.345
+            if disc <= 0:
+                ui.label(f"That's ~{CUR}{per_week:,.0f}/week. Log a few weeks of spending and Balance "
+                         "will show where it could come from.").classes("text-xs").style(f"color:{TEXT_DIM}")
+            elif per_month <= disc:
+                share = per_month / disc * 100
+                ui.label(f"That's ~{CUR}{per_week:,.0f}/week — about {share:.0f}% of your ~{CUR}{disc:,.0f}/mo "
+                         "of flexible spend (dining, coffee, subs). Redirect that and you're on track.").classes(
+                    "text-xs").style(f"color:{EMERALD}")
+            else:
+                realistic = remaining / max(disc, 1)
+                ui.label(f"Heads up: this needs {CUR}{per_month:,.0f}/mo, but you have only ~{CUR}{disc:,.0f}/mo "
+                         f"of flexible spend. Even redirecting all of it that's ~{realistic:.0f} months — or "
+                         "you'd have to trim essentials.").classes("text-xs").style(f"color:{AMBER}")
+
         total_saved = sum(g.saved_amount or 0 for g in goals)
         total_target = sum(g.target_amount or 0 for g in goals)
 
@@ -5245,9 +5360,16 @@ def savings_page():
                         ui.label(f"Save {CUR}{per_month:,.2f}/month to reach it by "
                                  f"{g.target_date.strftime('%d %b %Y')} ({days_left} days left).").classes(
                             "text-xs").style(f"color:{TEXT_DIM}")
+                        _coach(per_month, remaining, discretionary_monthly)
                     else:
                         ui.label(f"Target date passed -- {CUR}{remaining:,.2f} still to go.").classes(
                             "text-xs").style(f"color:{AMBER}")
+                elif not reached and discretionary_monthly > 0:
+                    remaining = target - saved
+                    months = remaining / discretionary_monthly
+                    ui.label(f"No target date. At ~{CUR}{discretionary_monthly:,.0f}/mo of flexible spend, "
+                             f"redirecting it all would get you there in ~{months:.0f} months.").classes(
+                        "text-xs").style(f"color:{TEXT_DIM}")
                 if not reached:
                     with ui.row().classes("w-full items-end gap-2 mt-1"):
                         amt = ui.number(label="Add contribution", format="%.2f").props(f'prefix="{CUR}" dense').classes("w-40")

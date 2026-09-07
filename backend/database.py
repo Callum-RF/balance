@@ -48,15 +48,20 @@ def _sqlite_pragmas(dbapi_connection, connection_record):
     cur.close()
 
 
+# Lean, flat taxonomy (Sep 2026): a single level of ~11 categories rather than a
+# deep parent/child tree. The money x health spine leads (Groceries, Eating Out,
+# Health & Fitness). Empty child lists => each seeds as a top-level category.
 DEFAULT_CATEGORIES = {
-    "Food": ["Groceries", "Dining Out", "Coffee/Snacks", "Supplements"],
-    "Entertainment": ["Books", "Games", "Streaming", "Hobbies"],
-    "Transport": ["Fuel", "Public Transport", "Vehicle Maintenance"],
-    "Bills": ["Rent/Mortgage", "Utilities", "Phone/Mobile", "Subscriptions", "Insurance"],
-    "Health": ["Pharmacy", "Medical", "Fitness"],
-    "Shopping": ["Clothing", "Household", "Personal Care", "Gifts"],
+    "Groceries": [],
+    "Eating Out": [],
+    "Health & Fitness": [],
+    "Subscriptions": [],
+    "Bills & Utilities": [],
+    "Transport": [],
+    "Shopping": [],
+    "Entertainment": [],
+    "Travel": [],
     "Education": [],
-    "Travel/Holidays": [],
     "Miscellaneous": [],
 }
 

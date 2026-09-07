@@ -15,53 +15,52 @@ Everything here only *suggests*; the caller keeps the value editable.
 from typing import Dict, Iterable, Optional
 
 
-# keyword (lowercase substring)  ->  category name (must exist in the DB)
+# keyword (lowercase substring)  ->  category name (must exist in the DB).
+# Names track the lean flat taxonomy in database.DEFAULT_CATEGORIES.
 # Longer, more specific keywords are matched first (see _SORTED_KEYWORDS),
-# so e.g. "uber eats" (Dining Out) wins over "uber" (Public Transport).
+# so e.g. "uber eats" (Eating Out) wins over "uber" (Transport).
 KEYWORD_TO_CATEGORY: Dict[str, str] = {
     # Groceries
     "tesco": "Groceries", "sainsbury": "Groceries", "asda": "Groceries",
     "aldi": "Groceries", "lidl": "Groceries", "morrison": "Groceries",
     "waitrose": "Groceries", "m&s food": "Groceries", "marks & spencer": "Groceries",
     "co-op": "Groceries", "iceland": "Groceries", "ocado": "Groceries",
-    # Coffee/Snacks
-    "costa": "Coffee/Snacks", "pret": "Coffee/Snacks", "greggs": "Coffee/Snacks",
-    "starbucks": "Coffee/Snacks", "caffe nero": "Coffee/Snacks",
-    # Dining Out
-    "uber eats": "Dining Out", "just eat": "Dining Out", "deliveroo": "Dining Out",
-    "nando": "Dining Out", "wagamama": "Dining Out", "mcdonald": "Dining Out",
-    "kfc": "Dining Out", "domino": "Dining Out", "pizza express": "Dining Out",
-    "franco manca": "Dining Out", "five guys": "Dining Out", "burger king": "Dining Out",
-    # Public Transport
-    "tfl": "Public Transport", "trainline": "Public Transport",
-    "national rail": "Public Transport", "uber": "Public Transport",
-    "bolt": "Public Transport", "citymapper": "Public Transport",
-    # Fuel
-    "shell": "Fuel", "esso": "Fuel", "texaco": "Fuel", "gulf oil": "Fuel",
-    # Streaming
-    "netflix": "Streaming", "spotify": "Streaming", "disney+": "Streaming",
-    "disney plus": "Streaming", "now tv": "Streaming", "apple tv": "Streaming",
-    "youtube premium": "Streaming",
-    # Games / Books
-    "steam": "Games", "playstation": "Games", "nintendo": "Games", "xbox": "Games",
-    "waterstones": "Books", "audible": "Books",
-    # Fitness / Supplements
-    "puregym": "Fitness", "the gym group": "Fitness", "myprotein": "Supplements",
-    "bulk.com": "Supplements", "holland & barrett": "Supplements",
-    # Pharmacy
-    "boots": "Pharmacy", "superdrug": "Pharmacy",
-    # Utilities / Phone
-    "british gas": "Utilities", "octopus energy": "Utilities", "thames water": "Utilities",
-    "vodafone": "Phone/Mobile", "giffgaff": "Phone/Mobile", "sky mobile": "Phone/Mobile",
-    # Household / Clothing / Shopping
-    "ikea": "Household", "b&q": "Household", "dunelm": "Household", "argos": "Household",
-    "primark": "Clothing", "asos": "Clothing", "uniqlo": "Clothing", "jd sports": "Clothing",
-    "zara": "Clothing", "h&m": "Clothing",
+    # Eating Out (cafes, takeaways, restaurants)
+    "costa": "Eating Out", "pret": "Eating Out", "greggs": "Eating Out",
+    "starbucks": "Eating Out", "caffe nero": "Eating Out",
+    "uber eats": "Eating Out", "just eat": "Eating Out", "deliveroo": "Eating Out",
+    "nando": "Eating Out", "wagamama": "Eating Out", "mcdonald": "Eating Out",
+    "kfc": "Eating Out", "domino": "Eating Out", "pizza express": "Eating Out",
+    "franco manca": "Eating Out", "five guys": "Eating Out", "burger king": "Eating Out",
+    # Transport (public transport + fuel)
+    "tfl": "Transport", "trainline": "Transport",
+    "national rail": "Transport", "uber": "Transport",
+    "bolt": "Transport", "citymapper": "Transport",
+    "shell": "Transport", "esso": "Transport", "texaco": "Transport", "gulf oil": "Transport",
+    # Entertainment (streaming, games, books, hobbies)
+    "netflix": "Entertainment", "spotify": "Entertainment", "disney+": "Entertainment",
+    "disney plus": "Entertainment", "now tv": "Entertainment", "apple tv": "Entertainment",
+    "youtube premium": "Entertainment",
+    "steam": "Entertainment", "playstation": "Entertainment", "nintendo": "Entertainment",
+    "xbox": "Entertainment", "waterstones": "Entertainment", "audible": "Entertainment",
+    # Health & Fitness (gym, supplements, pharmacy, medical)
+    "puregym": "Health & Fitness", "the gym group": "Health & Fitness",
+    "myprotein": "Health & Fitness", "bulk.com": "Health & Fitness",
+    "holland & barrett": "Health & Fitness",
+    "boots": "Health & Fitness", "superdrug": "Health & Fitness",
+    # Bills & Utilities (energy, water, phone/mobile)
+    "british gas": "Bills & Utilities", "octopus energy": "Bills & Utilities",
+    "thames water": "Bills & Utilities",
+    "vodafone": "Bills & Utilities", "giffgaff": "Bills & Utilities", "sky mobile": "Bills & Utilities",
+    # Shopping (household, clothing, general)
+    "ikea": "Shopping", "b&q": "Shopping", "dunelm": "Shopping", "argos": "Shopping",
+    "primark": "Shopping", "asos": "Shopping", "uniqlo": "Shopping", "jd sports": "Shopping",
+    "zara": "Shopping", "h&m": "Shopping",
     "amazon": "Shopping",
     # Travel
-    "ryanair": "Travel/Holidays", "easyjet": "Travel/Holidays",
-    "british airways": "Travel/Holidays", "booking.com": "Travel/Holidays",
-    "airbnb": "Travel/Holidays", "expedia": "Travel/Holidays",
+    "ryanair": "Travel", "easyjet": "Travel",
+    "british airways": "Travel", "booking.com": "Travel",
+    "airbnb": "Travel", "expedia": "Travel",
 }
 
 # Longest keywords first so specific merchants beat generic ones.

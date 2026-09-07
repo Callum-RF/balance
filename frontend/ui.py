@@ -170,8 +170,7 @@ BOTTOM_NAV_ITEMS = [
 # Spending that's a "want" rather than a "need" -- the flexible money a savings
 # goal can realistically be funded from. Used by the goal-coaching on /savings.
 DISCRETIONARY_CATEGORIES = {
-    "Dining Out", "Coffee/Snacks", "Entertainment", "Books", "Games",
-    "Streaming", "Hobbies", "Gifts", "Subscriptions", "Travel/Holidays",
+    "Eating Out", "Entertainment", "Subscriptions", "Travel",
 }
 
 
@@ -303,12 +302,12 @@ def inject_theme():
            dark, rounded, filled fields instead of Quasar's default underline */
         .q-field__label {{ color: {TEXT_DIM} !important; }}
         .q-field--outlined .q-field__control {{
-            background: {SURFACE_2};
-            border-radius: 14px;
+            background: transparent;
+            border-radius: 12px;
         }}
         .q-field--outlined .q-field__control:before {{
             border-color: {BORDER};
-            border-radius: 14px;
+            border-radius: 12px;
             transition: border-color .15s ease;
         }}
         .q-field--outlined .q-field__control:hover:before {{
@@ -571,13 +570,22 @@ def shell():
     return content
 
 
-def goal_field(label: str, value, info_key: str):
-    """A number input with the shared structured info popover -- keeps the
-    form compact while surfacing the educational content on demand, on tap
-    (so it works on touch, not just hover)."""
-    with ui.row().classes("w-full items-center gap-1 no-wrap"):
-        field = ui.number(label=label, value=value).props("dense").classes("flex-grow")
-        with ui.element("div").classes("mb-2"):
+def goal_row(label: str, value, info_key: str, unit: str, color: str = None, last: bool = False):
+    """One nutrient target as a tidy settings-list row: a colour dot, the name,
+    then a slim right-aligned editable value with its unit and the info popover.
+    Reads as a list, not a grid of chunky boxes -- and the colour dots give the
+    section some variety instead of another wall of identical fields."""
+    color = color or INDIGO
+    row = ui.row().classes("w-full items-center gap-3 no-wrap py-1.5")
+    if not last:
+        row.classes(f"border-b border-[{BORDER}]")
+    with row:
+        ui.element("div").classes("rounded-full shrink-0").style(f"width:7px;height:7px;background:{color}")
+        ui.label(label).classes("text-sm flex-1 min-w-0 truncate")
+        field = ui.number(value=value).props(
+            'dense outlined input-class="text-right"').classes("w-24 shrink-0")
+        ui.label(unit).classes("text-xs shrink-0 w-8 text-right").style(f"color:{TEXT_DIM}")
+        with ui.element("div").classes("shrink-0"):
             nutrient_info_icon(info_key)
     return field
 
@@ -590,6 +598,22 @@ def card_box_accent():
     """Accent 'hero' card -- same as card_box() but with a faint accent wash and
     a touch more lift, for the one 'look here first' card on a screen."""
     return ui.column().classes(CARD_ACCENT)
+
+
+def page_header(title: str, subtitle: str = None, icon: str = None):
+    """A designed page header: a circular accent chip + title (+ subtitle) and a
+    short accent underline -- a bit of identity beyond plain bold text, and a
+    deliberate round element to break up the rounded-rectangle grid."""
+    with ui.row().classes("w-full items-center gap-3"):
+        if icon:
+            with ui.element("div").classes("flex items-center justify-center rounded-full shrink-0").style(
+                    f"width:2.5rem;height:2.5rem;background:{INDIGO}1f;"):
+                ui.icon(icon).classes("text-xl").style(f"color:{INDIGO}")
+        with ui.column().classes("gap-0"):
+            ui.label(title).classes("text-2xl font-bold leading-tight")
+            if subtitle:
+                ui.label(subtitle).classes("text-sm").style(f"color:{TEXT_DIM}")
+    ui.element("div").classes("h-1 rounded-full mt-2 mb-1").style(f"width:2.75rem;background:{INDIGO}")
 
 
 def date_field(label_text: str = None, value=None):
@@ -971,7 +995,7 @@ def dashboard():
                        f"({protein_today:,.0f}/{goals.protein_g:,.0f}g)",
                        AMBER, "Log meal", "/add-food"))
 
-    _eat_out_ids = [cid for cid, n in categories.items() if n in ("Dining Out", "Coffee/Snacks")]
+    _eat_out_ids = [cid for cid, n in categories.items() if n == "Eating Out"]
     _eat_out = sum(month_spend_by_category.get(cid, 0) for cid in _eat_out_ids)
     if _eat_out >= 20:
         with Session(engine) as session:
@@ -1911,7 +1935,7 @@ def _classify_cadence(median_gap_days):
 # Everyday-spend categories where regular-ish purchases (a weekly shop, a
 # monthly-ish fuel stop) coincidentally mimic a subscription's cadence --
 # excluded from recurring detection to avoid nonsense suggestions.
-NON_SUBSCRIPTION_CATEGORIES = {"Fuel", "Groceries", "Coffee/Snacks", "Dining Out", "Public Transport"}
+NON_SUBSCRIPTION_CATEGORIES = {"Groceries", "Eating Out", "Transport"}
 
 
 def detect_recurring_transactions(transactions, existing_sub_names, exclude_category_ids=frozenset()):
@@ -3078,8 +3102,8 @@ def render_add_food_form(on_saved=None):
         # so one entry captures both the meal (health) and the transaction (money).
         with Session(engine) as _s:
             _out_cats = {c.id: c.name for c in _s.exec(select(Category)).all()
-                         if c.name in ("Dining Out", "Coffee/Snacks", "Groceries")}
-        _default_out_cat = next((cid for cid, n in _out_cats.items() if n == "Dining Out"), None)
+                         if c.name in ("Eating Out", "Groceries")}
+        _default_out_cat = next((cid for cid, n in _out_cats.items() if n == "Eating Out"), None)
         with ui.column().classes("w-full gap-1 mt-1 pl-3 border-l-2").style(f"border-color:{INDIGO}55") as out_spend_section:
             ui.label("Also log the spend").classes("text-xs").style(f"color:{TEXT_DIM}")
             with ui.row().classes("w-full items-end gap-2 flex-wrap"):
@@ -4191,26 +4215,53 @@ def forecast_page():
 # Profile & Goals
 # ---------------------------------------------------------------------------
 def profile_page():
-    ui.label("Profile & Goals").classes("text-2xl font-bold")
+    page_header("Profile & Goals", "Your details, targets and weight — what the reference calcs use.", icon="badge")
 
     with Session(engine) as session:
         profile = session.exec(select(UserProfile)).first() or UserProfile()
         goals = session.exec(select(NutrientGoals)).first() or NutrientGoals()
         overall_budget = session.exec(select(BudgetTarget).where(BudgetTarget.category_id == None)).first()  # noqa: E711
 
-    with card_box().classes("w-full max-w-xl"):
+    # Shared caption-above field wrapper -- a small caption in TEXT_DIM sitting
+    # above a light outlined input, used across every card on the page so the
+    # form fields share one rhythm instead of each card inventing its own.
+    def capfield(label, builder):
+        with ui.column().classes("gap-1 w-full"):
+            ui.label(label).classes("text-xs font-medium").style(f"color:{TEXT_DIM}")
+            return builder()
+
+    age = calculate_age(profile.date_of_birth)
+    with Session(engine) as _s:
+        latest_w = _s.exec(select(WeightLog).order_by(WeightLog.date.desc())).first()
+
+    # Unboxed summary strip: the key reference figures sit directly on the page
+    # (no card) so the top reads open and airy rather than as another boxed
+    # rectangle -- the deliberate break from the stack-of-cards look.
+    stats = [
+        ("Age", str(age) if age else "—", INDIGO),
+        ("Height", f"{profile.height_cm:.0f} cm" if profile.height_cm else "—", SKY),
+        ("Latest weight", f"{latest_w.weight_kg:.1f} kg" if latest_w else "—", EMERALD),
+        ("Calorie target", f"{goals.calories:,.0f}" if goals.calories else "—", AMBER),
+    ]
+    with ui.row().classes("w-full max-w-2xl items-center gap-x-8 gap-y-3 flex-wrap mb-3 mt-1"):
+        for lbl, val, col in stats:
+            with ui.row().classes("items-center gap-2"):
+                ui.element("div").classes("rounded-full shrink-0").style(f"width:9px;height:9px;background:{col}")
+                with ui.column().classes("gap-0"):
+                    ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
+                    ui.label(val).classes("text-lg font-bold leading-tight")
+
+    with card_box().classes("w-full max-w-2xl").style(f"border-left:3px solid {INDIGO}"):
         section_header("About you", icon="person", icon_color=INDIGO)
-        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"):
+
+        # Caption-above layout so the grid columns line up (date_field is already
+        # caption-above; the others were floating-label at a different height).
+        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 items-start"):
             dob_input = date_field("Date of birth", value=profile.date_of_birth.isoformat() if profile.date_of_birth else None)
-            height_input = ui.number(label="Height (cm)", value=profile.height_cm).props("dense").classes("w-full")
-            sex_select = ui.select(["male", "female", "other"], value=profile.sex, label="Sex (for reference calcs only)").props("dense options-dense").classes("w-full")
-            activity_select = ui.select(
-                ACTIVITY_LEVEL_OPTIONS, value=profile.activity_level, label="Activity level"
-            ).props("dense options-dense").classes("w-full")
-        age = calculate_age(profile.date_of_birth)
-        if age:
-            ui.label(f"Age: {age}").classes("text-sm mt-1").style(f"color:{TEXT_DIM}")
-        profile_result = ui.label().style(f"color:{EMERALD}")
+            height_input = capfield("Height (cm)", lambda: ui.number(value=profile.height_cm).props("dense outlined").classes("w-full"))
+            sex_select = capfield("Sex", lambda: ui.select(["male", "female", "other"], value=profile.sex).props("dense outlined options-dense").classes("w-full"))
+            activity_select = capfield("Activity level", lambda: ui.select(ACTIVITY_LEVEL_OPTIONS, value=profile.activity_level).props("dense outlined options-dense").classes("w-full"))
+        profile_result = ui.label().classes("text-sm").style(f"color:{EMERALD}")
 
         def save_profile():
             with Session(engine) as session:
@@ -4223,15 +4274,17 @@ def profile_page():
                 session.commit()
             profile_result.set_text("Saved!")
 
-        ui.button("Save profile", on_click=save_profile).props("color=primary unelevated")
+        with ui.row().classes("w-full justify-end mt-1"):
+            ui.button("Save profile", on_click=save_profile).props("color=primary unelevated no-caps")
 
-    with card_box().classes("w-full max-w-2xl"):
+    ui.separator().classes("w-full max-w-2xl my-4").style(f"background:{BORDER}")
+    with ui.column().classes("w-full max-w-2xl gap-3"):
         section_header("Weight", icon="monitor_weight", icon_color=EMERALD)
 
-        with ui.row().classes("w-full items-end gap-2"):
+        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 items-start max-w-md"):
             weight_date_input = date_field("Date", value=date.today().isoformat())
-            weight_input = ui.number(label="Weight (kg)").classes("flex-grow")
-        weight_result = ui.label().style(f"color:{EMERALD}")
+            weight_input = capfield("Weight (kg)", lambda: ui.number().props("dense outlined").classes("w-full"))
+        weight_result = ui.label().classes("text-sm").style(f"color:{EMERALD}")
 
         weight_chart_container = ui.column().classes("w-full gap-2 mt-3")
         weight_list_container = ui.column().classes("w-full gap-1 mt-3")
@@ -4246,11 +4299,12 @@ def profile_page():
             render_weight_chart()
             render_weight_list()
 
-        ui.button("Log weight", on_click=log_weight).props("color=primary unelevated")
+        with ui.row().classes("w-full justify-end mt-1"):
+            ui.button("Log weight", on_click=log_weight).props("color=primary unelevated no-caps")
 
         window_options = {"1d": "1 day", "3d": "3 day", "1w": "1 week", "1m": "1 month",
                            "3m": "3 month", "6m": "6 month", "1y": "1 year"}
-        window_select = ui.select(window_options, value="1w", label="Trend smoothing").props("dense options-dense").classes("w-40 mt-3")
+        window_select = ui.select(window_options, value="1w", label="Trend smoothing").props("dense outlined options-dense").classes("w-40 mt-3")
         ui.label(
             "Body weight bounces daily from water and food -- this averages readings over the "
             "selected window so the real trend is easier to see than the raw scale number alone."
@@ -4263,7 +4317,14 @@ def profile_page():
 
             with weight_chart_container:
                 if not trend["available"] or trend["num_entries"] < 2:
-                    ui.label("Log at least two weigh-ins to see a trend.").classes("text-sm").style(f"color:{TEXT_DIM}")
+                    # Compact placeholder rather than a tall empty chart void: a
+                    # centred hint in a dashed frame that fills only what it needs.
+                    with ui.column().classes(
+                            "w-full items-center justify-center gap-1 py-6 rounded-xl").style(
+                            f"border:1px dashed {BORDER}"):
+                        ui.icon("show_chart").classes("text-3xl").style(f"color:{TEXT_DIM}")
+                        ui.label("Log at least two weigh-ins to see your trend.").classes(
+                            "text-sm").style(f"color:{TEXT_DIM}")
                     return
 
                 change = trend["change_since_first_kg"]
@@ -4341,33 +4402,38 @@ def profile_page():
 
         render_weight_list()
 
-    with card_box().classes("w-full max-w-2xl"):
+    ui.separator().classes("w-full max-w-2xl my-4").style(f"background:{BORDER}")
+    with card_box().classes("w-full max-w-2xl").style(f"border-left:3px solid {INDIGO}"):
         section_header("Daily nutrient goals", icon="flag", icon_color=INDIGO,
                        subtitle="Tap the ⓘ next to any field for what it does and why it matters.")
         # Just-in-time estimate: fill the fields from the profile + latest weight
         # rather than entering them by hand. Pick a direction, tap Estimate, review, Save.
-        with ui.column().classes("w-full gap-1 mb-2"):
-            ui.label("Not sure? Estimate from your profile & latest weight.").classes("text-xs").style(f"color:{TEXT_DIM}")
-            with ui.row().classes("items-center gap-2 flex-wrap"):
-                est_dir = ui.toggle({"maintain": "Maintain", "lose": "Lose fat", "gain": "Build muscle"},
-                                    value="maintain").props("dense no-caps toggle-color=primary")
-                est_btn = ui.button("Estimate", icon="auto_awesome").props("outline no-caps color=primary")
-        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0"):
-            cal_g = goal_field("Calories (kcal)", goals.calories, "calories")
-            protein_g = goal_field("Protein (g)", goals.protein_g, "protein_g")
-            carbs_g = goal_field("Carbs (g)", goals.carbs_g, "carbs_g")
-            fat_g = goal_field("Fat (g)", goals.fat_g, "fat_g")
-            fiber_g = goal_field("Fiber (g)", goals.fiber_g, "fiber_g")
-            water_g = goal_field("Water (ml)", goals.water_ml, "water_ml")
+        with ui.row().classes("w-full items-center gap-x-2 gap-y-1 flex-wrap mb-3"):
+            ui.label("Estimate for").classes("text-xs shrink-0").style(f"color:{TEXT_DIM}")
+            est_dir = ui.toggle({"maintain": "Maintain", "lose": "Lose fat", "gain": "Build muscle"},
+                                value="maintain").props(
+                "no-caps unelevated dense toggle-color=primary").classes(
+                "seg-toggle text-xs overflow-hidden").style(
+                f"border:1px solid {BORDER}; border-radius:999px; background:{SURFACE_2};")
+            est_btn = ui.button("Estimate", icon="auto_awesome").props("flat dense no-caps color=primary")
+        with ui.column().classes("w-full gap-0 mt-1"):
+            cal_g = goal_row("Calories", goals.calories, "calories", "kcal", INDIGO)
+            protein_g = goal_row("Protein", goals.protein_g, "protein_g", "g", EMERALD)
+            carbs_g = goal_row("Carbs", goals.carbs_g, "carbs_g", "g", AMBER)
+            fat_g = goal_row("Fat", goals.fat_g, "fat_g", "g", VIOLET)
+            fiber_g = goal_row("Fiber", goals.fiber_g, "fiber_g", "g", SKY)
+            water_g = goal_row("Water", goals.water_ml, "water_ml", "ml", SKY, last=True)
 
-        ui.label("Daily limits").classes("text-sm font-semibold mt-3").style(f"color:{TEXT_DIM}")
-        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0"):
-            sugar_lim = goal_field("Added sugar limit (g)", goals.sugar_limit_g, "sugar_limit_g")
-            satfat_lim = goal_field("Saturated fat limit (g)", goals.saturated_fat_limit_g, "saturated_fat_limit_g")
-            transfat_lim = goal_field("Trans fat limit (g)", goals.trans_fat_limit_g, "trans_fat_limit_g")
-            sodium_lim = goal_field("Sodium limit (mg)", goals.sodium_limit_mg, "sodium_limit_mg")
-            alcohol_lim = goal_field("Alcohol limit (g)", goals.alcohol_limit_g, "alcohol_limit_g")
-            caffeine_lim = goal_field("Caffeine limit (mg)", goals.caffeine_limit_mg, "caffeine_limit_mg")
+        with ui.expansion("Daily limits", icon="do_not_disturb_on").props("dense").classes("w-full mt-3"):
+            ui.label("Ceilings, not targets — a day is flagged when it goes over.").classes(
+                "text-xs mb-1").style(f"color:{TEXT_DIM}")
+            with ui.column().classes("w-full gap-0"):
+                sugar_lim = goal_row("Added sugar", goals.sugar_limit_g, "sugar_limit_g", "g", RED)
+                satfat_lim = goal_row("Saturated fat", goals.saturated_fat_limit_g, "saturated_fat_limit_g", "g", RED)
+                transfat_lim = goal_row("Trans fat", goals.trans_fat_limit_g, "trans_fat_limit_g", "g", RED)
+                sodium_lim = goal_row("Sodium", goals.sodium_limit_mg, "sodium_limit_mg", "mg", RED)
+                alcohol_lim = goal_row("Alcohol", goals.alcohol_limit_g, "alcohol_limit_g", "g", RED)
+                caffeine_lim = goal_row("Caffeine", goals.caffeine_limit_mg, "caffeine_limit_mg", "mg", RED, last=True)
         goals_result = ui.label().style(f"color:{EMERALD}").classes("mt-2")
 
         def _estimate_targets():
@@ -4428,12 +4494,16 @@ def profile_page():
                 session.commit()
             goals_result.set_text("Saved!")
 
-        ui.button("Save goals", on_click=save_goals).props("color=primary unelevated")
+        with ui.row().classes("w-full justify-end mt-1"):
+            ui.button("Save goals", on_click=save_goals).props("color=primary unelevated no-caps")
 
-    with card_box().classes("w-full max-w-lg"):
+    ui.separator().classes("w-full max-w-2xl my-4").style(f"background:{BORDER}")
+    with ui.column().classes("w-full max-w-2xl gap-3"):
         section_header("Monthly budget target", icon="account_balance_wallet", icon_color=AMBER)
-        budget_input = ui.number(label=f"Overall monthly budget ({CUR})", value=overall_budget.monthly_amount if overall_budget else None).classes("w-full")
-        budget_result = ui.label().style(f"color:{EMERALD}")
+        budget_input = capfield(
+            f"Overall monthly budget ({CUR})",
+            lambda: ui.number(value=overall_budget.monthly_amount if overall_budget else None).props("dense outlined").classes("w-full max-w-xs"))
+        budget_result = ui.label().classes("text-sm").style(f"color:{EMERALD}")
 
         def save_budget():
             with Session(engine) as session:
@@ -4446,16 +4516,15 @@ def profile_page():
                 session.commit()
             budget_result.set_text("Saved!")
 
-        ui.button("Save budget", on_click=save_budget).props("color=primary unelevated")
+        with ui.row().classes("w-full justify-end mt-1"):
+            ui.button("Save budget", on_click=save_budget).props("color=primary unelevated no-caps")
 
-        ui.separator().classes("my-3")
-        ui.label("Per-category budgets").classes("text-sm font-semibold")
-        ui.label(
-            "Optional -- caps a specific category instead of your whole spend, shown as its "
-            "own progress bar on the dashboard alongside the overall budget above."
-        ).classes("text-xs mb-1").style(f"color:{TEXT_DIM}")
-
-        budget_section = ui.column().classes("w-full gap-2")
+        with ui.expansion("Per-category budgets", icon="tune").props("dense").classes("w-full mt-1"):
+            ui.label(
+                "Optional -- caps a specific category instead of your whole spend, shown as its "
+                "own progress bar on the dashboard alongside the overall budget above."
+            ).classes("text-xs mb-1").style(f"color:{TEXT_DIM}")
+            budget_section = ui.column().classes("w-full gap-2")
 
         def render_budget_section():
             budget_section.clear()
@@ -4517,7 +4586,8 @@ def profile_page():
 
         render_budget_section()
 
-    with card_box().classes("w-full max-w-lg"):
+    ui.separator().classes("w-full max-w-2xl my-4").style(f"background:{BORDER}")
+    with ui.column().classes("w-full max-w-2xl gap-3"):
         section_header("Backup", icon="cloud_download", icon_color=SKY,
                        subtitle="Everything in one JSON file -- transactions, income, food, water, weight, pantry, subscriptions, prices, budgets, goals, profile.")
 
@@ -4676,7 +4746,10 @@ def settings_page():
     with card_box().classes("w-full max-w-2xl"):
         section_header("Categories", icon="category", icon_color=VIOLET,
                        subtitle="Rename, add, or remove spending categories.")
-        cat_container = ui.column().classes("w-full gap-1")
+        # Collapsed by default -- the full 32-row editor is a wall most people
+        # never touch; keep it one tap away instead of always on screen.
+        with ui.expansion("Manage categories", icon="tune").props("dense").classes("w-full mt-1"):
+            cat_container = ui.column().classes("w-full gap-1")
 
         def category_usage(session, cat_id):
             n = len(session.exec(select(Transaction).where(Transaction.category_id == cat_id)).all())
@@ -5199,7 +5272,7 @@ def shopping_page():
         existing_names = {(i.name or "").strip().lower() for i in items}
         active_pantry_names = {(p.name or "").strip().lower() for p in pantry if p.status == "active"}
         category_options = {c.id: _category_label(c, categories) for c in categories}
-        default_grocery_cat = next((c.id for c in categories if c.name in ("Groceries", "Food")), None)
+        default_grocery_cat = next((c.id for c in categories if c.name == "Groceries"), None)
 
         with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
             stat_card("To buy", str(len(to_buy)), accent=INDIGO, icon="shopping_cart")

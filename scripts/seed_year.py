@@ -68,9 +68,9 @@ while cur <= today:
     y, m = cur.year, cur.month
     last = monthrange(y, m)[1]
     for dd, amt, merch, cat, pay in [
-        (1, 975.0, "Landlord Ltd", "Rent/Mortgage", "Bank Transfer"),
-        (15, round(random.uniform(105, 145), 2), "British Gas", "Utilities", "Bank Transfer"),
-        (3, 33.0, "PureGym", "Fitness", "Bank Transfer"),
+        (1, 975.0, "Landlord Ltd", "Bills & Utilities", "Bank Transfer"),
+        (15, round(random.uniform(105, 145), 2), "British Gas", "Bills & Utilities", "Bank Transfer"),
+        (3, 33.0, "PureGym", "Health & Fitness", "Bank Transfer"),
     ]:
         day = date(y, m, min(dd, last))
         if start <= day <= today:
@@ -83,18 +83,18 @@ while day <= today:
     if wd in (1, 4, 6) and random.random() < 0.85:
         tx.append((day, round(random.uniform(22, 68), 2), random.choice(GROCERS), "Groceries", "Card", random.choice(TAGS)))
     if wd < 5 and random.random() < 0.55:
-        tx.append((day, round(random.uniform(2.5, 6.5), 2), random.choice(COFFEE), "Coffee/Snacks", random.choice(["Card", "Card", "Cash"]), random.choice(TAGS)))
+        tx.append((day, round(random.uniform(2.5, 6.5), 2), random.choice(COFFEE), "Eating Out", random.choice(["Card", "Card", "Cash"]), random.choice(TAGS)))
     if wd in (4, 5) and random.random() < 0.5:
-        tx.append((day, round(random.uniform(16, 58), 2), random.choice(DINING), "Dining Out", "Card", random.choice(["With friends", "With family", "Alone"])))
+        tx.append((day, round(random.uniform(16, 58), 2), random.choice(DINING), "Eating Out", "Card", random.choice(["With friends", "With family", "Alone"])))
     if random.random() < 0.10:
-        tx.append((day, round(random.uniform(48, 74), 2), random.choice(FUEL), "Fuel", "Card", ""))
+        tx.append((day, round(random.uniform(48, 74), 2), random.choice(FUEL), "Transport", "Card", ""))
     if wd < 5 and random.random() < 0.15:
-        tx.append((day, round(random.uniform(2.4, 18), 2), random.choice(TRANSPORT), "Public Transport", "Card", "Work"))
+        tx.append((day, round(random.uniform(2.4, 18), 2), random.choice(TRANSPORT), "Transport", "Card", "Work"))
     if random.random() < 0.06:
         cat, merch, lo, hi = random.choice([
-            ("Books", "Waterstones", 8, 22), ("Games", "Steam", 5, 40),
-            ("Household", "IKEA", 10, 60), ("Pharmacy", "Boots", 4, 25),
-            ("Gifts", "Card Factory", 5, 45), ("Hobbies", "Odeon", 9, 30)])
+            ("Entertainment", "Waterstones", 8, 22), ("Entertainment", "Steam", 5, 40),
+            ("Shopping", "IKEA", 10, 60), ("Health & Fitness", "Boots", 4, 25),
+            ("Shopping", "Card Factory", 5, 45), ("Entertainment", "Odeon", 9, 30)])
         tx.append((day, round(random.uniform(lo, hi), 2), merch, cat, "Card", random.choice(TAGS)))
     day += timedelta(days=1)
 
@@ -169,7 +169,7 @@ with Session(engine) as s:
     s.add(p)
     s.add(BudgetTarget(category_id=None, monthly_amount=1650.0))
     s.add(BudgetTarget(category_id=cid("Groceries"), monthly_amount=260.0))
-    s.add(BudgetTarget(category_id=cid("Dining Out"), monthly_amount=150.0))
+    s.add(BudgetTarget(category_id=cid("Eating Out"), monthly_amount=150.0))
     s.commit()
 
 # ------------------------------------------------- pantry, subscriptions, prices
@@ -189,10 +189,10 @@ with Session(engine) as s:
                      expiration_date=d(2), price=1.30, status="expired", resolved_at=datetime.utcnow()))
     s.add(PantryItem(name="Lettuce", location="fridge", macro_group="produce", quantity=1, unit="unit",
                      expiration_date=d(1), price=0.85, status="thrown_away", resolved_at=datetime.utcnow()))
-    s.add(Subscription(name="Netflix", amount=15.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=12), category_id=cid("Streaming"), payments_made=0))
-    s.add(Subscription(name="Spotify", amount=11.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=20), category_id=cid("Streaming"), payments_made=0))
+    s.add(Subscription(name="Netflix", amount=15.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=12), category_id=cid("Entertainment"), payments_made=0))
+    s.add(Subscription(name="Spotify", amount=11.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=20), category_id=cid("Entertainment"), payments_made=0))
     s.add(Subscription(name="Amazon Prime", amount=95.0, billing_cycle="yearly", next_payment_date=today + timedelta(days=200), category_id=cid("Subscriptions"), payments_made=0))
-    s.add(Subscription(name="Sofa installments", amount=45.0, billing_cycle="monthly", next_payment_date=today + timedelta(days=8), category_id=cid("Household"), total_payments=12, payments_made=5))
+    s.add(Subscription(name="Sofa installments", amount=45.0, billing_cycle="monthly", next_payment_date=today + timedelta(days=8), category_id=cid("Shopping"), total_payments=12, payments_made=5))
     for name, base, drift in [("Milk 2L", 1.45, 0.03), ("Olive Oil 1L", 4.80, 0.16), ("Coffee beans 1kg", 11.9, 0.28)]:
         pr, dt = base, start
         while dt <= today:
@@ -206,11 +206,11 @@ with Session(engine) as s:
     s.add(ScheduledTransaction(kind="income", amount=2680.0, description="Acme Corp", source="Salary",
                                cadence="monthly", next_date=add_months(today.replace(day=25), 0 if today.day < 25 else 1),
                                auto_post=True))
-    s.add(ScheduledTransaction(kind="expense", amount=975.0, description="Landlord Ltd", category_id=cid("Rent/Mortgage"),
+    s.add(ScheduledTransaction(kind="expense", amount=975.0, description="Landlord Ltd", category_id=cid("Bills & Utilities"),
                                cadence="monthly", next_date=add_months(today.replace(day=1), 1), auto_post=True))
-    s.add(ScheduledTransaction(kind="expense", amount=33.0, description="PureGym", category_id=cid("Fitness"),
+    s.add(ScheduledTransaction(kind="expense", amount=33.0, description="PureGym", category_id=cid("Health & Fitness"),
                                cadence="monthly", next_date=today + timedelta(days=6), auto_post=True))
-    s.add(ScheduledTransaction(kind="expense", amount=120.0, description="Electricity (variable)", category_id=cid("Utilities"),
+    s.add(ScheduledTransaction(kind="expense", amount=120.0, description="Electricity (variable)", category_id=cid("Bills & Utilities"),
                                cadence="monthly", next_date=today, auto_post=False))  # shows in "Due now"
     s.commit()
 

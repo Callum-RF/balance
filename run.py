@@ -5,8 +5,9 @@ frontend (web UI) in one process, on one port.
 Usage:
     python run.py
 
-Then open it through the Ensemble launcher on your Tailscale network.
-The server listens on localhost; Tailscale fronts it (see BALANCE_HOST).
+Then open http://localhost:8000 (API docs at /docs). The server listens on
+localhost by default; for remote access, front it with Tailscale rather than
+exposing it directly (see BALANCE_HOST and DEPLOY.md).
 """
 import os
 

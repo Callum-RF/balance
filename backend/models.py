@@ -115,6 +115,7 @@ class FoodLogBase(SQLModel):
     barcode: Optional[str] = None
     quantity_g: float = 100.0
     tag: Optional[str] = None  # e.g. "alone", "with friends"
+    eaten_out: bool = False  # meal bought out (restaurant/takeaway) vs cooked at home
 
     # "good" macro/micro nutrients
     calories: Optional[float] = None

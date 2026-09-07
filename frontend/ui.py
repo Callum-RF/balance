@@ -974,8 +974,13 @@ def dashboard():
     _eat_out_ids = [cid for cid, n in categories.items() if n in ("Dining Out", "Coffee/Snacks")]
     _eat_out = sum(month_spend_by_category.get(cid, 0) for cid in _eat_out_ids)
     if _eat_out >= 20:
+        with Session(engine) as session:
+            _eat_out_cal = sum(f.calories or 0 for f in session.exec(
+                select(FoodLog).where(FoodLog.date >= month_start, FoodLog.date <= month_end,
+                                      FoodLog.eaten_out == True)).all())  # noqa: E712
+        _cal_bit = f" ≈ {_eat_out_cal:,.0f} kcal from meals out" if _eat_out_cal > 0 else ""
         nudges.append(("restaurant_menu",
-                       f"{CUR}{_eat_out:,.0f} on eating out this month — cooking more saves money and calories",
+                       f"{CUR}{_eat_out:,.0f} on eating out this month{_cal_bit} — cooking more saves both",
                        AMBER, "See", "/transactions"))
 
     if module_enabled("subscriptions"):
@@ -3067,6 +3072,7 @@ def render_add_food_form(on_saved=None):
                     ).classes("text-xs min-w-0 px-2").style(f"color:{INDIGO}")
 
         tag_select = ui.select(TAG_OPTIONS, value="", label="Tag (context)").props("dense options-dense").classes("w-full mt-2")
+        eaten_out_toggle = ui.switch("Eaten out (restaurant / takeaway)", value=False).props("dense color=primary").classes("mt-1")
 
         with ui.row().classes("w-full items-end gap-2 mt-2"):
             barcode_input = ui.input(label="Barcode (scan or type)").props("dense").classes("flex-grow")
@@ -3198,6 +3204,7 @@ def render_add_food_form(on_saved=None):
                     barcode=barcode_input.value or None,
                     quantity_g=quantity_input.value or 100,
                     tag=tag_select.value or None,
+                    eaten_out=eaten_out_toggle.value,
                     calories=calories_input.value,
                     protein_g=protein_input.value,
                     carbs_g=carbs_input.value,

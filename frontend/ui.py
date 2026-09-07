@@ -618,6 +618,23 @@ def page_header(title: str, subtitle: str = None, icon: str = None):
     ui.element("div").classes("h-1 rounded-full mt-2 mb-1").style(f"width:2.75rem;background:{INDIGO}")
 
 
+def summary_strip(stats, width_class: str = ""):
+    """Unboxed headline figures sitting directly on the page (colour dot + small
+    label + bold value), the airy top-of-page read introduced on Profile.
+    `stats` is a list of (label, value, colour) tuples; falsy rows are skipped
+    so callers can conditionally include figures inline."""
+    stats = [s for s in stats if s]
+    if not stats:
+        return
+    with ui.row().classes(f"w-full {width_class} items-center gap-x-8 gap-y-3 flex-wrap mb-3 mt-1"):
+        for lbl, val, col in stats:
+            with ui.row().classes("items-center gap-2"):
+                ui.element("div").classes("rounded-full shrink-0").style(f"width:9px;height:9px;background:{col}")
+                with ui.column().classes("gap-0"):
+                    ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
+                    ui.label(str(val)).classes("text-lg font-bold leading-tight")
+
+
 def date_field(label_text: str = None, value=None):
     """
     Compact, Linear-style date field: a small text input showing the date,
@@ -2254,6 +2271,16 @@ def add_transaction_page():
 def transactions_page():
     page_header("Transactions", "Every expense, searchable and categorised.", icon="receipt_long")
 
+    _m_start = date.today().replace(day=1)
+    with Session(engine) as _s:
+        _all_tx = _s.exec(select(Transaction)).all()
+    _month_tx = [t for t in _all_tx if t.date >= _m_start]
+    summary_strip([
+        ("Spent this month", f"{CUR}{sum(t.amount for t in _month_tx):,.0f}", AMBER),
+        ("This month", f"{len(_month_tx)} txns", INDIGO),
+        ("All-time total", f"{CUR}{sum(t.amount for t in _all_tx):,.0f}", EMERALD),
+    ])
+
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
         summary_tab = ui.tab("Summary", icon="bar_chart")
@@ -2560,6 +2587,17 @@ def add_income_page():
 
 def income_page():
     page_header("Income", "What's coming in, by source and month.", icon="payments")
+
+    _m_start = date.today().replace(day=1)
+    with Session(engine) as _s:
+        _all_inc = _s.exec(select(Income)).all()
+    _month_inc = [i for i in _all_inc if i.date >= _m_start]
+    _sources = len({i.source for i in _all_inc if i.source})
+    summary_strip([
+        ("This month", f"{CUR}{sum(i.amount for i in _month_inc):,.0f}", EMERALD),
+        ("All-time", f"{CUR}{sum(i.amount for i in _all_inc):,.0f}", INDIGO),
+        ("Sources", str(_sources), AMBER) if _sources else None,
+    ])
 
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
@@ -3341,6 +3379,18 @@ def add_food_page():
 def food_log_page():
     page_header("Food Log", "What you ate today, measured against your targets.", icon="restaurant")
 
+    _today = date.today()
+    with Session(engine) as _s:
+        _tf = _s.exec(select(FoodLog).where(FoodLog.date == _today)).all()
+        _g = _s.exec(select(NutrientGoals)).first() or NutrientGoals()
+    _cal = sum(f.calories or 0 for f in _tf)
+    _pro = sum(f.protein_g or 0 for f in _tf)
+    summary_strip([
+        ("Calories today", f"{_cal:,.0f}" + (f" / {_g.calories:,.0f}" if _g.calories else ""), INDIGO),
+        ("Protein today", f"{_pro:,.0f}g" + (f" / {_g.protein_g:,.0f}g" if _g.protein_g else ""), EMERALD),
+        ("Meals logged", str(len(_tf)), AMBER),
+    ])
+
     with ui.tabs().classes("w-full") as tabs:
         log_tab = ui.tab("Log", icon="list")
         add_tab = ui.tab("Add", icon="add")
@@ -3587,11 +3637,11 @@ def pantry_page():
         days_left = round(total_cal / goals.calories, 1) if goals.calories else 0
         stock_value = sum(i.price or 0 for i in items)
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("Items in stock", str(len(items)), accent=INDIGO, icon="inventory_2")
-            stat_card("Estimated runway", f"{days_left} days", "based on stored calories vs. your goal", EMERALD, icon="event_available")
-            if stock_value:
-                stat_card("Value in stock", f"{CUR}{stock_value:,.2f}", "total of logged item prices", SKY, icon="sell")
+        summary_strip([
+            ("Items in stock", str(len(items)), INDIGO),
+            ("Est. runway", f"{days_left} days", EMERALD),
+            ("Value in stock", f"{CUR}{stock_value:,.2f}", SKY) if stock_value else None,
+        ])
 
         def resolve_item(item_id, status):
             with Session(engine) as session:
@@ -3715,11 +3765,11 @@ def subscriptions_page():
       installments = [s for s in active_subs if s.total_payments]
       remaining_owed = sum(s.amount * max(s.total_payments - s.payments_made, 0) for s in installments)
 
-      with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-        stat_card("Active subscriptions", str(len(active_subs)), accent=INDIGO, icon="autorenew")
-        stat_card("Monthly total", f"{CUR}{monthly_total:,.2f}", "normalized across billing cycles", EMERALD, icon="payments")
-        if installments:
-            stat_card("Still owed on installments", f"{CUR}{remaining_owed:,.2f}", f"across {len(installments)} plan(s)", AMBER, icon="hourglass_bottom")
+      summary_strip([
+          ("Active subs", str(len(active_subs)), INDIGO),
+          ("Monthly total", f"{CUR}{monthly_total:,.2f}", EMERALD),
+          ("Owed on installments", f"{CUR}{remaining_owed:,.2f}", AMBER) if installments else None,
+      ])
 
       # --- detected recurring payments not yet tracked as subscriptions ---
       with Session(engine) as session:
@@ -4278,22 +4328,12 @@ def profile_page():
     with Session(engine) as _s:
         latest_w = _s.exec(select(WeightLog).order_by(WeightLog.date.desc())).first()
 
-    # Unboxed summary strip: the key reference figures sit directly on the page
-    # (no card) so the top reads open and airy rather than as another boxed
-    # rectangle -- the deliberate break from the stack-of-cards look.
-    stats = [
+    summary_strip([
         ("Age", str(age) if age else "—", INDIGO),
         ("Height", f"{profile.height_cm:.0f} cm" if profile.height_cm else "—", SKY),
         ("Latest weight", f"{latest_w.weight_kg:.1f} kg" if latest_w else "—", EMERALD),
         ("Calorie target", f"{goals.calories:,.0f}" if goals.calories else "—", AMBER),
-    ]
-    with ui.row().classes("w-full max-w-2xl items-center gap-x-8 gap-y-3 flex-wrap mb-3 mt-1"):
-        for lbl, val, col in stats:
-            with ui.row().classes("items-center gap-2"):
-                ui.element("div").classes("rounded-full shrink-0").style(f"width:9px;height:9px;background:{col}")
-                with ui.column().classes("gap-0"):
-                    ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
-                    ui.label(val).classes("text-lg font-bold leading-tight")
+    ], width_class="max-w-2xl")
 
     with card_box().classes("w-full max-w-2xl").style(f"border-left:3px solid {INDIGO}"):
         section_header("About you", icon="person", icon_color=INDIGO)
@@ -4990,11 +5030,11 @@ def scheduled_page():
         monthly_out = sum(monthly_norm(i) for i in active_items if i.kind == "expense")
         monthly_in = sum(monthly_norm(i) for i in active_items if i.kind == "income")
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("Scheduled items", str(len(active_items)), accent=INDIGO, icon="event_repeat")
-            stat_card("Recurring out", f"{CUR}{monthly_out:,.2f}", "normalized / month", RED, icon="trending_down")
-            if monthly_in:
-                stat_card("Recurring in", f"{CUR}{monthly_in:,.2f}", "normalized / month", EMERALD, icon="trending_up")
+        summary_strip([
+            ("Scheduled items", str(len(active_items)), INDIGO),
+            ("Recurring out / mo", f"{CUR}{monthly_out:,.0f}", RED),
+            ("Recurring in / mo", f"{CUR}{monthly_in:,.0f}", EMERALD) if monthly_in else None,
+        ])
 
         # --- forward cashflow: what's due in the next 30 days ---
         cf = cashflow_summary(days=30, today=today)
@@ -5164,8 +5204,10 @@ def recipes_page():
         for it in all_items:
             items_by_recipe.setdefault(it.recipe_id, []).append(it)
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("Saved recipes", str(len(recipes)), accent=VIOLET, icon="menu_book")
+        summary_strip([
+            ("Saved recipes", str(len(recipes)), VIOLET),
+            ("Ingredients", str(len(all_items)), SKY) if all_items else None,
+        ])
 
         def _del_recipe(rid):
             with Session(engine) as session:
@@ -5318,8 +5360,10 @@ def shopping_page():
         category_options = {c.id: _category_label(c, categories) for c in categories}
         default_grocery_cat = next((c.id for c in categories if c.name == "Groceries"), None)
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("To buy", str(len(to_buy)), accent=INDIGO, icon="shopping_cart")
+        summary_strip([
+            ("To buy", str(len(to_buy)), INDIGO),
+            ("Completed", str(len(items) - len(to_buy)), EMERALD) if items else None,
+        ])
 
         def _toggle(iid, val):
             # No refresh: lets you tick several items before "Add to pantry".
@@ -5487,12 +5531,11 @@ def savings_page():
         total_saved = sum(g.saved_amount or 0 for g in goals)
         total_target = sum(g.target_amount or 0 for g in goals)
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("Total saved", f"{CUR}{total_saved:,.2f}",
-                      f"of {CUR}{total_target:,.2f} across {len(goals)} goal(s)", EMERALD, icon="savings")
-            if total_target:
-                stat_card("Overall progress", f"{min(total_saved / total_target * 100, 100):.0f}%",
-                          accent=INDIGO, icon="donut_large")
+        summary_strip([
+            ("Total saved", f"{CUR}{total_saved:,.0f}", EMERALD),
+            ("Target", f"{CUR}{total_target:,.0f} · {len(goals)} goal{'s' if len(goals) != 1 else ''}", INDIGO),
+            ("Overall progress", f"{min(total_saved / total_target * 100, 100):.0f}%", AMBER) if total_target else None,
+        ])
 
         def _contribute(gid, amount):
             with Session(engine) as session:
@@ -5602,12 +5645,12 @@ def accounts_page():
         liabilities = sum(bal for (_i, _n, typ, bal) in accounts if typ in LIABILITY_TYPES)
         net = assets - liabilities
 
-        with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-            stat_card("Net worth", f"{CUR}{net:,.2f}", f"{len(accounts)} account(s)",
-                      EMERALD if net >= 0 else RED, icon="account_balance")
-            stat_card("Assets", f"{CUR}{assets:,.2f}", accent=INDIGO, icon="trending_up")
-            if liabilities:
-                stat_card("Liabilities", f"{CUR}{liabilities:,.2f}", accent=RED, icon="trending_down")
+        summary_strip([
+            ("Net worth", f"{CUR}{net:,.0f}", EMERALD if net >= 0 else RED),
+            ("Assets", f"{CUR}{assets:,.0f}", INDIGO),
+            ("Liabilities", f"{CUR}{liabilities:,.0f}", RED) if liabilities else None,
+            ("Accounts", str(len(accounts)), SKY) if accounts else None,
+        ])
 
         def _save_balance(aid, val):
             with Session(engine) as session:

@@ -1076,29 +1076,11 @@ def dashboard():
                 if _cta and _route:
                     ui.button(_cta, on_click=lambda _, r=_route: ui.navigate.to(r)).props("flat dense no-caps color=primary")
 
-    # --- KPI tiles: the at-a-glance headline row ---
+    # Budget state used by the "This month" card below. (The old KPI headline
+    # row was removed -- Calories duplicated the Today gauge, and Spent/Net
+    # duplicated the "This month" card.)
     over_budget = bool(overall_budget and overall_budget.monthly_amount and spent_this_month > overall_budget.monthly_amount)
     has_budget = bool(overall_budget and overall_budget.monthly_amount)
-    with ui.row().classes("w-full gap-3 sm:gap-4 flex-wrap items-stretch"):
-        kpi_tile(
-            "Calories today", f"{calories_today:,.0f}", "local_fire_department", INDIGO,
-            sub=f"of {(goals.calories or 0):,.0f} kcal goal",
-            meter=(calories_today, goals.calories) if goals.calories else None,
-        )
-        kpi_tile(
-            "Spent this month", f"{CUR}{spent_this_month:,.0f}", "account_balance_wallet",
-            RED if over_budget else AMBER,
-            sub=(f"of {CUR}{overall_budget.monthly_amount:,.0f} budget" if has_budget else "this month"),
-            meter=(spent_this_month, overall_budget.monthly_amount) if has_budget else None,
-        )
-        if income_module:
-            net_sign = "+" if net_this_month >= 0 else "−"
-            kpi_tile(
-                "Net this month", f"{net_sign}{CUR}{abs(net_this_month):,.0f}",
-                "trending_up" if net_this_month >= 0 else "trending_down",
-                EMERALD if net_this_month >= 0 else RED,
-                sub=f"{CUR}{income_this_month:,.0f} in − {CUR}{spent_this_month:,.0f} out",
-            )
 
     # --- Today: nutrition, what to watch, and water -- navigable day by day ---
     LIMIT_FIELDS = [

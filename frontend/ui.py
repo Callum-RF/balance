@@ -21,6 +21,7 @@ from sqlmodel import Session, select
 
 from backend.database import engine, RECEIPTS_DIR
 from backend.modules import MODULES, MODULE_TIERS, MODULES_SENTINEL
+from backend.timeutil import utcnow
 from backend.models import (
     Category, Transaction, FoodLog, WaterLog, WaterLogCreate,
     UserProfile, NutrientGoals, BudgetTarget, PantryItem, Subscription,
@@ -3630,7 +3631,7 @@ def pantry_page():
                 item = session.get(PantryItem, item_id)
                 if item:
                     item.status = status
-                    item.resolved_at = datetime.utcnow()
+                    item.resolved_at = utcnow()
                     session.add(item)
                     session.commit()
             content.refresh()
@@ -4665,7 +4666,7 @@ def profile_page():
                 "budgets": BudgetTarget, "categories": Category,
                 "profile": UserProfile, "goals": NutrientGoals, "settings": AppSettings,
             }
-            payload = {"exported_at": datetime.utcnow().isoformat(), "app": "balance", "version": 1}
+            payload = {"exported_at": utcnow().isoformat(), "app": "balance", "version": 1}
             with Session(engine) as session:
                 for name, model in tables.items():
                     rows = session.exec(select(model)).all()

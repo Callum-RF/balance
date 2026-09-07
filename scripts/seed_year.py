@@ -11,7 +11,7 @@ import os
 import random
 import sys
 from calendar import monthrange
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,6 +24,7 @@ from backend.models import (  # noqa: E402
     ScheduledTransaction, Recipe, RecipeItem, ShoppingListItem, SavingsGoal,
     Account, NetWorthSnapshot,
 )
+from backend.timeutil import utcnow  # noqa: E402
 
 random.seed(7)
 today = date.today()
@@ -186,9 +187,9 @@ with Session(engine) as s:
                          purchase_date=d(random.randint(1, 10)), expiration_date=today + timedelta(days=exp),
                          price=price, calories=cal, protein_g=prot, status="active"))
     s.add(PantryItem(name="Bread loaf", location="pantry", macro_group="carbs", quantity=1, unit="unit",
-                     expiration_date=d(2), price=1.30, status="expired", resolved_at=datetime.utcnow()))
+                     expiration_date=d(2), price=1.30, status="expired", resolved_at=utcnow()))
     s.add(PantryItem(name="Lettuce", location="fridge", macro_group="produce", quantity=1, unit="unit",
-                     expiration_date=d(1), price=0.85, status="thrown_away", resolved_at=datetime.utcnow()))
+                     expiration_date=d(1), price=0.85, status="thrown_away", resolved_at=utcnow()))
     s.add(Subscription(name="Netflix", amount=15.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=12), category_id=cid("Entertainment"), payments_made=0))
     s.add(Subscription(name="Spotify", amount=11.99, billing_cycle="monthly", next_payment_date=today + timedelta(days=20), category_id=cid("Entertainment"), payments_made=0))
     s.add(Subscription(name="Amazon Prime", amount=95.0, billing_cycle="yearly", next_payment_date=today + timedelta(days=200), category_id=cid("Subscriptions"), payments_made=0))

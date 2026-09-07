@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from backend.database import engine
 from backend.models import FoodLog, PantryItem, Recipe, RecipeItem
+from backend.timeutil import utcnow
 
 NUTRIENTS = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g",
              "sodium_mg", "saturated_fat_g", "trans_fat_g", "added_sugar_g",
@@ -76,7 +77,7 @@ def mark_recipe_ingredients_used(recipe_id: int) -> int:
             )
             if match:
                 match.status = "consumed"
-                match.resolved_at = datetime.utcnow()
+                match.resolved_at = utcnow()
                 session.add(match)
                 session.commit()  # commit so the next ingredient re-queries without it
                 depleted += 1

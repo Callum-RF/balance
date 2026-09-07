@@ -3,13 +3,13 @@ Looks up nutrition info for a barcode via the free Open Food Facts API,
 caching results locally so we don't hit the API repeatedly for the same
 product.
 """
-from datetime import datetime
 from typing import Optional
 
 import httpx
 from sqlmodel import Session
 
 from backend.models import FoodItemCache
+from backend.timeutil import utcnow
 
 OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
 
@@ -57,7 +57,7 @@ def lookup_barcode(session: Session, barcode: str, force_refresh: bool = False) 
     if cached:
         for key, value in nutrition.items():
             setattr(cached, key, value)
-        cached.last_updated = datetime.utcnow()
+        cached.last_updated = utcnow()
         item = cached
     else:
         item = FoodItemCache(barcode=barcode, **nutrition)

@@ -6,6 +6,8 @@ from typing import Optional
 
 from sqlmodel import SQLModel, Field
 
+from backend.timeutil import utcnow
+
 
 # ---------------------------------------------------------------------------
 # Categories (hierarchical: e.g. Food -> Groceries, Entertainment -> Books)
@@ -44,7 +46,7 @@ class TransactionBase(SQLModel):
 
 class Transaction(TransactionBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class TransactionCreate(TransactionBase):
@@ -84,7 +86,7 @@ class IncomeBase(SQLModel):
 
 class Income(IncomeBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class IncomeCreate(IncomeBase):
@@ -136,7 +138,7 @@ class FoodLogBase(SQLModel):
 
 class FoodLog(FoodLogBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class FoodLogCreate(FoodLogBase):
@@ -167,7 +169,7 @@ class FoodItemCache(SQLModel, table=True):
     caffeine_per_100g: Optional[float] = None
 
     source: str = "openfoodfacts"
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +182,7 @@ class WaterLogBase(SQLModel):
 
 class WaterLog(WaterLogBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class WaterLogCreate(WaterLogBase):
@@ -331,7 +333,7 @@ class PantryItemBase(SQLModel):
 
 class PantryItem(PantryItemBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     resolved_at: Optional[datetime] = None  # when marked consumed/thrown_away/expired
 
 
@@ -376,7 +378,7 @@ class SubscriptionBase(SQLModel):
 
 class Subscription(SubscriptionBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class SubscriptionCreate(SubscriptionBase):
@@ -451,7 +453,7 @@ class ScheduledTransactionBase(SQLModel):
 
 class ScheduledTransaction(ScheduledTransactionBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     last_posted: Optional[date_type] = None
 
 
@@ -470,7 +472,7 @@ class Recipe(SQLModel, table=True):
     name: str
     servings: float = 1
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class RecipeItem(SQLModel, table=True):
@@ -508,7 +510,7 @@ class ShoppingListItem(SQLModel, table=True):
     location: str = "pantry"              # where it goes when bought: fridge/freezer/pantry
     done: bool = False
     source: str = "manual"                # manual / pantry / recurring
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +524,7 @@ class SavingsGoal(SQLModel, table=True):
     saved_amount: float = 0
     target_date: Optional[date_type] = None
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +536,7 @@ class Account(SQLModel, table=True):
     name: str
     type: str = "current"   # current / savings / cash / investment / credit / loan
     balance: float = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class NetWorthSnapshot(SQLModel, table=True):

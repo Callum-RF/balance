@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 
 from backend.database import get_session
 from backend.models import PantryItem, PantryItemCreate, PantryItemRead, PantryItemUpdate, NutrientGoals
+from backend.timeutil import utcnow
 
 router = APIRouter(prefix="/api/pantry", tags=["pantry"])
 
@@ -42,7 +43,7 @@ def update_pantry_item(item_id: int, update: PantryItemUpdate, session: Session 
     for key, value in data.items():
         setattr(item, key, value)
     if "status" in data and data["status"] in ("consumed", "thrown_away", "expired"):
-        item.resolved_at = datetime.utcnow()
+        item.resolved_at = utcnow()
     session.add(item)
     session.commit()
     session.refresh(item)

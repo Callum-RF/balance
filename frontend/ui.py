@@ -1340,41 +1340,59 @@ def dashboard():
 
     if any(inc_by_m.values()) or any(spend_by_m.values()):
         saved_total = sum(net_series)
+        cumulative, _run = [], 0.0
+        for v in net_series:
+            _run += v
+            cumulative.append(round(_run, 2))
         with card_box().classes("w-full"):
             hdr = section_header("Savings", icon="savings", icon_color=EMERALD,
-                                 subtitle="Monthly net (income − spending), last 6 months")
+                                 subtitle="Monthly net (bars) and how it adds up (line), last 6 months")
             with hdr:
                 badge(f"{'+' if saved_total >= 0 else '−'}{CUR}{abs(saved_total):,.0f} over 6 months",
                       EMERALD if saved_total >= 0 else RED)
             ui.echart({
                 "backgroundColor": "transparent",
-                "grid": {"left": 60, "right": 15, "top": 15, "bottom": 28},
+                "grid": {"left": 55, "right": 55, "top": 30, "bottom": 28},
+                "legend": {"top": 0, "textStyle": {"color": TEXT_DIM, "fontSize": 10},
+                           "itemWidth": 14, "itemHeight": 8},
                 "xAxis": {
                     "type": "category",
                     "data": [date(k[0], k[1], 1).strftime("%b") for k in month_keys],
                     "axisLine": {"lineStyle": {"color": BORDER}},
                     "axisLabel": {"color": TEXT_DIM, "fontSize": 10},
                 },
-                "yAxis": {
-                    "type": "value", "axisLine": {"show": False},
-                    "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
-                    "splitLine": {"lineStyle": {"color": BORDER}},
-                },
+                "yAxis": [
+                    {"type": "value", "axisLine": {"show": False},
+                     "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
+                     "splitLine": {"lineStyle": {"color": BORDER}}},
+                    {"type": "value", "axisLine": {"show": False},
+                     "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
+                     "splitLine": {"show": False}},
+                ],
                 "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-                "series": [{
-                    "type": "bar",
-                    "data": [
-                        {"value": v, "itemStyle": {"color": EMERALD if v >= 0 else RED, "borderRadius": [3, 3, 0, 0]}}
-                        for v in net_series
-                    ],
-                    "markLine": {
-                        "silent": True, "symbol": "none",
-                        "lineStyle": {"color": TEXT_DIM, "type": "dashed"},
-                        "label": {"show": False},
-                        "data": [{"yAxis": 0}],
+                "series": [
+                    {
+                        "name": "Monthly net", "type": "bar",
+                        "data": [
+                            {"value": v, "itemStyle": {"color": EMERALD if v >= 0 else RED, "borderRadius": [3, 3, 0, 0]}}
+                            for v in net_series
+                        ],
+                        "markLine": {
+                            "silent": True, "symbol": "none",
+                            "lineStyle": {"color": TEXT_DIM, "type": "dashed"},
+                            "label": {"show": False},
+                            "data": [{"yAxis": 0}],
+                        },
                     },
-                }],
-            }).classes("w-full h-44")
+                    {
+                        "name": "Total saved", "type": "line", "yAxisIndex": 1,
+                        "data": cumulative, "smooth": True, "symbolSize": 5,
+                        "lineStyle": {"color": INDIGO, "width": 3},
+                        "itemStyle": {"color": INDIGO},
+                        "areaStyle": {"color": "rgba(99,102,241,0.08)"},
+                    },
+                ],
+            }).classes("w-full h-52")
 
     # --- habit streaks ---
     from backend.streaks import compute_streaks
@@ -4107,8 +4125,7 @@ def forecast_page():
                     ui.link("Go to Profile & Goals", "/profile").classes("no-underline text-sm mt-2").style(f"color:{INDIGO}")
                 return
 
-            with card_box().classes("w-full"):
-                ui.label("How this is calculated").classes("text-sm font-semibold")
+            with ui.expansion("How this is calculated", icon="info").props("dense").classes("w-full"):
                 ui.label(
                     "Maintenance calories are estimated with the Mifflin-St Jeor formula, scaled by your "
                     "activity level -- a population-average estimate, not a measurement of your actual "

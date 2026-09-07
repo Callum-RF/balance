@@ -17,7 +17,7 @@ Tailscale as an installable PWA.
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
 ![NiceGUI](https://img.shields.io/badge/UI-NiceGUI-4051B5)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/license-personal%20project-lightgrey)
+![License](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey)
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -152,3 +152,10 @@ A personal project I actively use and self-host — single-user by design. It's
 not a product with other users, and it's shared here as a portfolio piece. The
 combined finance + health data model is deliberately kept local-first rather than
 built into a multi-user hosted service.
+
+## License
+
+**All rights reserved.** This source is public for viewing and as a portfolio /
+reference only — it is *not* open source. You're welcome to read the code, but
+you may not use, copy, modify, or redistribute it without written permission.
+See [`LICENSE`](LICENSE) for the full notice.

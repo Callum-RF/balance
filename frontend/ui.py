@@ -3074,6 +3074,20 @@ def render_add_food_form(on_saved=None):
         tag_select = ui.select(TAG_OPTIONS, value="", label="Tag (context)").props("dense options-dense").classes("w-full mt-2")
         eaten_out_toggle = ui.switch("Eaten out (restaurant / takeaway)", value=False).props("dense color=primary").classes("mt-1")
 
+        # Unified spend+meal log: when eaten out, optionally record the spend too,
+        # so one entry captures both the meal (health) and the transaction (money).
+        with Session(engine) as _s:
+            _out_cats = {c.id: c.name for c in _s.exec(select(Category)).all()
+                         if c.name in ("Dining Out", "Coffee/Snacks", "Groceries")}
+        _default_out_cat = next((cid for cid, n in _out_cats.items() if n == "Dining Out"), None)
+        with ui.column().classes("w-full gap-1 mt-1 pl-3 border-l-2").style(f"border-color:{INDIGO}55") as out_spend_section:
+            ui.label("Also log the spend").classes("text-xs").style(f"color:{TEXT_DIM}")
+            with ui.row().classes("w-full items-end gap-2 flex-wrap"):
+                out_amount = ui.number(label="Amount", format="%.2f").props(f'prefix="{CUR}" dense').classes("w-28")
+                out_merchant = ui.input(label="Where").props("dense").classes("flex-grow min-w-[120px]")
+                out_cat = ui.select(_out_cats, value=_default_out_cat, label="Category").props("dense options-dense").classes("w-36")
+        out_spend_section.bind_visibility_from(eaten_out_toggle, "value")
+
         with ui.row().classes("w-full items-end gap-2 mt-2"):
             barcode_input = ui.input(label="Barcode (scan or type)").props("dense").classes("flex-grow")
             ui.button(icon="qr_code_scanner", on_click=lambda: scan_barcode()).props("outline dense round").tooltip("Scan with camera")
@@ -3220,7 +3234,18 @@ def render_add_food_form(on_saved=None):
                 )
                 session.add(entry)
                 session.commit()
-            result_label.set_text("Saved!")
+                also_spent = bool(eaten_out_toggle.value and out_amount.value)
+                if also_spent:
+                    session.add(Transaction(
+                        date=date.fromisoformat(date_input.value),
+                        amount=out_amount.value,
+                        merchant=(out_merchant.value or name_input.value or "Meal out")[:200],
+                        category_id=out_cat.value,
+                        payment_method="Card",
+                        notes="Logged with a meal",
+                    ))
+                    session.commit()
+            result_label.set_text("Saved — meal + spend logged!" if also_spent else "Saved!")
             # reset for the next entry rather than leaving stale values behind
             barcode_input.value = ""
             name_input.value = ""
@@ -3229,6 +3254,8 @@ def render_add_food_form(on_saved=None):
             protein_input.value = None
             carbs_input.value = None
             fat_input.value = None
+            out_amount.value = None
+            out_merchant.value = ""
             lookup_status.set_text("")
             if on_saved:
                 on_saved()

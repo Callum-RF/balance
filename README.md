@@ -26,8 +26,7 @@ Tailscale as an installable PWA.
 
 ## Why it's built this way
 
-The design turns on one idea — **the money × health intersection** — and that
-premise is used as a filter for what belongs in the product:
+That intersection is also the **filter** for what earns a place in the product:
 
 - **Cost-per-macro.** Balance ranks your pantry by *protein per £*, so "eat well
   on a budget" becomes a number instead of a vibe.
@@ -47,10 +46,13 @@ data never leaves your machine — no accounts, no cloud, no telemetry.
 
 > Rendered with generated demo data — no real personal finances shown.
 
+**Money × health** — the signature view: cost-per-macro ranking, computed
+month-over-month insights, and a savings chart with a cumulative "total saved" line.
+
+![Money × health](docs/screenshots/money-health.png)
+
 | | |
 |---|---|
-| **Dashboard** — time-aware greeting, "needs your attention" nudges, ring gauges for calories & macros, live budget burn-down. | **Money × health** — cost-per-macro ranking, computed month-over-month insights, and a savings chart with a cumulative "total saved" line. |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Insights](docs/screenshots/money-health.png) |
 | **Transactions** — searchable, categorised, CSV export, per-row context tags. | **Food Log** — meals against your daily targets, macros, barcode lookup. |
 | ![Transactions](docs/screenshots/transactions.png) | ![Food Log](docs/screenshots/food-log.png) |
 | **Forecast** — TDEE *calibrated from your own weight + intake history*, not a population formula. | **Pantry** — stock with cost + macros, expiry alerts, waste tracking. |
@@ -79,21 +81,13 @@ data never leaves your machine — no accounts, no cloud, no telemetry.
 
 ## Features at a glance
 
-- **Dashboard** — verb-driven nudges (budget pace, protein gap, subs due),
-  ring gauges, water logging, month income/spend/net with budget bars, savings
-  trend, computed insights, habit streaks.
-- **Transactions & Income** — add/edit/delete, search + filter, CSV export,
-  context tags, spend/income trend and category charts.
-- **Food Log** — macros + micros, Open Food Facts barcode lookup, an "eaten out"
-  toggle that logs the meal *and* the spend in one action.
-- **Pantry / Recipes / Shopping** — stock with cost + macros, expiry & waste
-  tracking, recipes costed per serving, a shopping list wired to both.
-- **Subscriptions & Scheduled** — recurring spend normalised to a monthly total,
-  auto-detection of untracked recurring payments, forward cashflow.
-- **Profile & Goals** — profile-driven targets with a just-in-time estimator,
-  weight trend with smoothing, budgets, one-file JSON backup.
-- **Settings** — currency, category management, per-module toggles, an optional
-  per-session PIN lock.
+- **Dashboard** — actionable nudges, ring-gauge macros, water logging, month income/spend/net with budgets.
+- **Transactions & Income** — add/edit/delete, search + filter, CSV export, context tags, trend + category charts.
+- **Food Log** — macros + micros, barcode lookup, and an "eaten out" toggle that logs the meal *and* the spend at once.
+- **Pantry · Recipes · Shopping** — stock with cost + macros, expiry/waste tracking, per-serving recipe costs.
+- **Subscriptions & Scheduled** — recurring spend normalised to a monthly total, plus auto-detected untracked payments.
+- **Profile & Goals** — profile-driven targets, weight-trend smoothing, budgets, one-file JSON backup.
+- **Settings** — currency, category management, per-module toggles, optional PIN lock.
 
 ## Tech stack
 
@@ -122,7 +116,7 @@ data never leaves your machine — no accounts, no cloud, no telemetry.
 ## Run it locally
 
 ```bash
-git clone <your-repo-url> balance
+git clone https://github.com/Callum-RF/balance.git
 cd balance
 python -m venv venv
 venv\Scripts\activate          # Windows  (source venv/bin/activate on macOS/Linux)
@@ -146,6 +140,17 @@ installing as a phone PWA — is in **[`DEPLOY.md`](DEPLOY.md)**.
 ```bash
 pytest
 ```
+
+## What's next
+
+Deliberately out of scope for now, but the natural next steps:
+
+- **Multi-user + auth** — off the table by design (local-first is a feature, not a
+  gap), but it's where a hosted version would begin.
+- **Micronutrient tracking** — vitamins/minerals via a food database, beyond the
+  current macro focus.
+- **Native mobile** — it's an installable PWA today; a native app would sharpen the
+  phone experience.
 
 ## Status
 

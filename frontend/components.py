@@ -66,18 +66,21 @@ def page_header(title: str, subtitle: str = None, icon: str = None):
 def summary_strip(stats, width_class: str = ""):
     """A page's headline figures: big numbers under small labels, divided by
     hairlines -- the same figures as Cadence's Stats page. `stats` is a list of
-    (label, value, colour) tuples (the colour marks the label); falsy rows are
+    (label, value, colour) tuples (the colour marks the label), optionally with
+    a fourth item: a small line of context under the number. Falsy rows are
     skipped so callers can include figures conditionally."""
     stats = [s for s in stats if s]
     if not stats:
         return
     with ui.element("div").classes(f"b-figs {width_class}"):
-        for lbl, val, col in stats:
+        for lbl, val, col, *sub in stats:
             with ui.element("div").classes("b-fig"):
                 with ui.element("div").classes("b-fig-label"):
                     ui.element("span").classes("dot").style(f"background:{col}")
                     ui.label(lbl)
                 ui.label(str(val)).classes("b-fig-num")
+                if sub and sub[0]:
+                    ui.label(sub[0]).classes("b-fig-sub")
 
 
 def date_field(label_text: str = None, value=None):
@@ -224,9 +227,9 @@ def section_header(title: str, icon: str = None, icon_color: str = None,
         icon_color = INDIGO
     if accent is None:
         accent = TEXT
+    # `icon` / `icon_color` are still accepted from older callers, but the
+    # Ensemble heading is plain text -- a chip on every card was just noise.
     with ui.row().classes("w-full items-center gap-3 no-wrap"):
-        if icon:
-            icon_chip(icon, icon_color)
         # min-w-0 + truncate so a long title/subtitle ellipsizes within the
         # space it has rather than growing and shoving the trailing controls
         # (which made the dashboard day-nav chevrons drift on narrow screens).

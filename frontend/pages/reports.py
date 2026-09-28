@@ -11,7 +11,8 @@ from ..components import (
     card_box,
     page_header,
     section_header,
-    stat_card,
+    summary_strip,
+    thin_meter,
 )
 from ..theme import (
     AMBER,
@@ -45,18 +46,20 @@ def reports_page():
         with Session(engine) as session:
             data = monthly_report(session, yr, mo)
         with container:
-            with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-                stat_card("Income", f"{CUR}{data['total_income']:,.2f}", accent=EMERALD, icon="trending_up")
-                stat_card("Spent", f"{CUR}{data['total_spent']:,.2f}",
-                          f"{data['transaction_count']} transactions", RED, icon="trending_down")
-                stat_card("Net", f"{CUR}{data['net']:,.2f}", accent=EMERALD if data['net'] >= 0 else RED,
-                          icon="account_balance")
+            summary_strip([
+                ("Income", f"{CUR}{data['total_income']:,.2f}", EMERALD),
+                ("Spent", f"{CUR}{data['total_spent']:,.2f}", RED, f"{data['transaction_count']} transactions"),
+                ("Net", f"{'+' if data['net'] >= 0 else '−'}{CUR}{abs(data['net']):,.2f}",
+                 EMERALD if data['net'] >= 0 else RED),
+            ])
             if data["overall_budget"] is not None:
                 ou = data["over_under_budget"]
-                with card_box().classes("w-full py-3"):
-                    ui.label(f"Overall budget {CUR}{data['overall_budget']:,.2f} — "
-                             f"{CUR}{abs(ou):,.2f} {'over' if ou > 0 else 'under'} budget.").classes(
-                        "text-sm").style(f"color:{RED if ou > 0 else EMERALD}")
+                with ui.element("div").classes("b-budget"):
+                    thin_meter(data["total_spent"], data["overall_budget"], RED if ou > 0 else EMERALD)
+                    with ui.element("div").classes("b-budget-cap"):
+                        ui.label(f"{CUR}{data['total_spent']:,.2f} of {CUR}{data['overall_budget']:,.2f} budget")
+                        ui.label(f"{CUR}{abs(ou):,.2f} {'over' if ou > 0 else 'under'}").style(
+                            f"color:{RED if ou > 0 else EMERALD}")
 
             with card_box().classes("w-full"):
                 section_header("Spending by category", icon="pie_chart", icon_color=VIOLET)

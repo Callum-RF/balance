@@ -1,5 +1,5 @@
 """The pantry page."""
-from datetime import date
+from datetime import date, timedelta
 
 from nicegui import ui
 from sqlmodel import Session, select
@@ -19,7 +19,9 @@ from ..components import (
     empty_state,
     list_row,
     page_header,
+    pill_toggle,
     section_header,
+    segmented,
     summary_strip,
     undo_banner,
 )
@@ -140,6 +142,86 @@ def pantry_page():
                 ui.button("Save", on_click=save).props("color=primary unelevated no-caps")
         dialog.open()
 
+    def render_add_form():
+        """Name first -- a name you've stocked before fills in the rest from
+        last time -- then where it lives and when it goes off. Macros and the
+        group fold away."""
+        with Session(engine) as session:
+            past = session.exec(select(PantryItem).order_by(PantryItem.id.desc()).limit(300)).all()
+        last_by_name = {}
+        for it in past:
+            last_by_name.setdefault(it.name.strip().lower(), it)
+        names = sorted({it.name for it in past})
+
+        with ui.column().classes("gap-2 max-w-xl w-full"):
+            name_input = ui.input(label="What is it?", autocomplete=names).props("dense").classes("w-full")
+            location = segmented("Where", {"fridge": "Fridge", "freezer": "Freezer", "pantry": "Pantry"},
+                                 "fridge")
+            with ui.row().classes("w-full gap-3 no-wrap"):
+                qty_input = ui.number(label="Quantity", value=1, min=0).props("dense").classes("flex-1")
+                unit_select = ui.select(UNITS, value="unit", label="Unit").props("dense options-dense").classes("w-24")
+                price_input = ui.number(label=f"Price ({CUR})", format="%.2f").props("dense").classes("flex-1")
+            ui.label("Use by").classes("text-xs mt-1").style(f"color:{TEXT_DIM}")
+            with ui.row().classes("w-full items-center gap-2"):
+                with ui.element("div").classes("b-pills"):
+                    for label, days in (("3 days", 3), ("1 week", 7), ("2 weeks", 14), ("1 month", 30)):
+                        with ui.element("div").classes("b-pill").on(
+                                "click", lambda d=days: setattr(
+                                    expiry_input, "value", (date.today() + timedelta(days=d)).isoformat())):
+                            ui.label(label)
+                expiry_input = date_field(None)
+            with ui.expansion("More details", icon="tune", caption="Group, calories, protein").classes("w-full"):
+                ui.label("Group").classes("text-xs").style(f"color:{TEXT_DIM}")
+                group = {"value": "other"}
+                set_group = pill_toggle({g: g.capitalize() for g in GROUPS}, "other",
+                                        lambda g: group.update(value=g))
+                with ui.row().classes("w-full gap-3 no-wrap"):
+                    cal_input = ui.number(label="Calories (total)").props("dense").classes("flex-1")
+                    protein_input = ui.number(label="Protein (g, total)").props("dense").classes("flex-1")
+
+            def prefill(e):
+                known = last_by_name.get((e.value or "").strip().lower())
+                if not known:
+                    return
+                location.value = known.location
+                set_group(known.macro_group if known.macro_group in GROUPS else "other")
+                qty_input.value = known.quantity
+                unit_select.value = known.unit if known.unit in UNITS else "unit"
+                price_input.value = known.price
+                cal_input.value = known.calories
+                protein_input.value = known.protein_g
+                if known.purchase_date and known.expiration_date:
+                    shelf = (known.expiration_date - known.purchase_date).days
+                    if shelf > 0:
+                        expiry_input.value = (date.today() + timedelta(days=shelf)).isoformat()
+
+            name_input.on_value_change(prefill)
+
+            def add_item():
+                name = (name_input.value or "").strip()
+                if not name:
+                    ui.notify("What is it? Add a name first.", type="warning")
+                    return
+                with Session(engine) as session:
+                    session.add(PantryItem(
+                        name=name,
+                        location=location.value,
+                        macro_group=group["value"],
+                        quantity=qty_input.value or 1,
+                        unit=unit_select.value,
+                        price=price_input.value,
+                        expiration_date=date.fromisoformat(expiry_input.value) if expiry_input.value else None,
+                        purchase_date=date.today(),
+                        calories=cal_input.value,
+                        protein_g=protein_input.value,
+                    ))
+                    session.commit()
+                ui.notify(f"Added {name} to the {location.value}.",
+                          type="positive")
+                content.refresh()
+
+            ui.button("Add to pantry", icon="add", on_click=add_item).props("color=primary unelevated no-caps")
+
     @ui.refreshable
     def content():
         with Session(engine) as session:
@@ -174,37 +256,7 @@ def pantry_page():
                                 ui.icon("chevron_right")
 
         with ui.expansion("Add pantry item", icon="add").classes("w-full"):
-            with ui.column().classes("gap-1 max-w-xl"):
-                name_input = ui.input(label="Item name").props("dense").classes("w-full")
-                with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"):
-                    location_select = ui.select(LOCATIONS, value="pantry", label="Location").props("dense options-dense").classes("w-full")
-                    macro_select = ui.select(GROUPS, value="other", label="Group").props("dense options-dense").classes("w-full")
-                    qty_input = ui.number(label="Quantity", value=1).props("dense").classes("w-full")
-                    unit_select = ui.select(UNITS, value="unit", label="Unit").props("dense options-dense").classes("w-full")
-                    price_input = ui.number(label=f"Price ({CUR})").props("dense").classes("w-full")
-                    expiry_input = date_field("Expiration date")
-                    cal_input = ui.number(label="Calories (total)").props("dense").classes("w-full")
-                    protein_input = ui.number(label="Protein (g, total)").props("dense").classes("w-full")
-
-                def add_item():
-                    with Session(engine) as session:
-                        session.add(PantryItem(
-                            name=name_input.value or "Unnamed item",
-                            location=location_select.value,
-                            macro_group=macro_select.value,
-                            quantity=qty_input.value or 1,
-                            unit=unit_select.value,
-                            price=price_input.value,
-                            expiration_date=date.fromisoformat(expiry_input.value) if expiry_input.value else None,
-                            purchase_date=date.today(),
-                            calories=cal_input.value,
-                            protein_g=protein_input.value,
-                        ))
-                        session.commit()
-                    ui.notify("Added.", type="positive")
-                    content.refresh()
-
-                ui.button("Add item", on_click=add_item).props("color=primary unelevated")
+            render_add_form()
 
         if not items:
             with card_box().classes("w-full"):

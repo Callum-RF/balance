@@ -11,7 +11,7 @@ from ..components import (
     card_box,
     page_header,
     section_header,
-    stat_card,
+    summary_strip,
 )
 from ..theme import (
     AMBER,
@@ -63,17 +63,19 @@ def forecast_page():
                 ).classes("text-xs").style(f"color:{TEXT_DIM}")
 
             calib = result.get("calibrated")
-            with ui.row().classes("w-full gap-4 flex-wrap items-stretch"):
-                activity_short = result["activity_level"].replace("_", " ")
-                if result.get("tdee_source") == "calibrated":
-                    maint_sub, maint_color = "calibrated from your own data", VIOLET
-                else:
-                    maint_sub, maint_color = f"BMR {result['bmr']:,.0f} × {activity_short} activity (formula)", INDIGO
-                stat_card("Estimated maintenance", f"{result['tdee']:,.0f} kcal/day", maint_sub, maint_color, icon="local_fire_department")
-                delta = result["daily_calorie_delta"]
-                delta_label = f"{delta:+,.0f} kcal/day" if delta else "0 kcal/day"
-                stat_card("Your recent average", f"{result['avg_daily_calories']:,.0f} kcal/day", f"{delta_label} vs. maintenance", EMERALD if delta <= 0 else AMBER, icon="restaurant")
-                stat_card("Recent daily spend", f"{CUR}{result['avg_daily_spend']:,.2f}", "trailing 30-day average", SKY, icon="account_balance_wallet")
+            activity_short = result["activity_level"].replace("_", " ")
+            if result.get("tdee_source") == "calibrated":
+                maint_sub, maint_color = "calibrated from your own data", VIOLET
+            else:
+                maint_sub, maint_color = f"BMR {result['bmr']:,.0f} × {activity_short} activity (formula)", INDIGO
+            delta = result["daily_calorie_delta"]
+            delta_label = f"{delta:+,.0f} kcal/day" if delta else "0 kcal/day"
+            summary_strip([
+                ("Maintenance", f"{result['tdee']:,.0f} kcal", maint_color, maint_sub),
+                ("You eat", f"{result['avg_daily_calories']:,.0f} kcal", EMERALD if delta <= 0 else AMBER,
+                 f"{delta_label} vs. maintenance"),
+                ("You spend", f"{CUR}{result['avg_daily_spend']:,.2f}/day", SKY, "trailing 30-day average"),
+            ])
 
             if calib:
                 with card_box().classes("w-full"):
@@ -114,7 +116,7 @@ def forecast_page():
                         "axisLabel": {"color": TEXT_DIM, "fontSize": 10},
                     },
                     "yAxis": {
-                        "type": "value",
+                        "type": "value", "scale": True,   # weight moves in kg, not from zero
                         "axisLine": {"show": False},
                         "axisLabel": {"color": TEXT_DIM, "formatter": "{value}kg"},
                         "splitLine": {"lineStyle": {"color": BORDER}},

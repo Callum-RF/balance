@@ -14,26 +14,42 @@ from ..common import CUR
 from ..components import (
     card_box,
     empty_state,
+    list_row,
     page_header,
     section_header,
     summary_strip,
+    undo_banner,
 )
 from ..theme import (
+    AMBER,
     BORDER,
     EMERALD,
     INDIGO,
+    LIST_GROUP,
     RED,
     SKY,
-    TEXT,
+    SURFACE,
     TEXT_DIM,
+    VIOLET,
     echart,
 )
 
+TYPE_ICONS = {
+    "current": ("account_balance", INDIGO), "savings": ("savings", EMERALD), "cash": ("payments", AMBER),
+    "investment": ("trending_up", VIOLET), "credit": ("credit_card", RED), "loan": ("request_quote", RED),
+}
+
 
 def accounts_page():
-    from backend.networth import ASSET_TYPES, LIABILITY_TYPES, TYPE_LABELS, snapshot_if_due
+    from backend.networth import (
+        ASSET_TYPES,
+        LIABILITY_TYPES,
+        TYPE_LABELS,
+        snapshot_if_due,
+    )
 
-    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.", icon="account_balance")
+    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.")
+    undo_container = ui.column().classes("w-full")
 
     @ui.refreshable
     def content():
@@ -73,10 +89,55 @@ def accounts_page():
         def _del(aid):
             with Session(engine) as session:
                 a = session.get(Account, aid)
-                if a:
-                    session.delete(a)
+                if not a:
+                    return
+                snapshot = a.model_dump(exclude={"id"})
+                session.delete(a)
                 session.commit()
+
+            def undo():
+                with Session(engine) as session:
+                    session.add(Account(**snapshot))
+                    session.commit()
+                ui.notify("Restored.", type="positive")
+                content.refresh()
+
             content.refresh()
+            undo_banner(undo_container, f"Deleted {snapshot['name']}.", undo)
+
+        def open_account(aid, nm, typ, bal):
+            """Update the balance (the usual job), or rename / retype / delete."""
+            with ui.dialog() as dialog, ui.card().classes(
+                    f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
+                section_header(nm, subtitle=TYPE_LABELS.get(typ, typ))
+                ui.label("Balance now").classes("text-xs").style(f"color:{TEXT_DIM}")
+                e_bal = ui.number(value=bal, format="%.2f").props(
+                    f'dense outlined prefix="{CUR}" input-class="text-2xl font-bold" autofocus').classes("w-full")
+                with ui.expansion("Rename or change type", icon="tune").classes("w-full"):
+                    e_name = ui.input(label="Name", value=nm).props("dense").classes("w-full")
+                    e_type = ui.select(TYPE_LABELS, value=typ, label="Type").props("dense").classes("w-full")
+
+                def save():
+                    with Session(engine) as session:
+                        a = session.get(Account, aid)
+                        if a:
+                            a.name = e_name.value or a.name
+                            a.type = e_type.value
+                            session.add(a)
+                            session.commit()
+                    dialog.close()
+                    _save_balance(aid, e_bal.value)
+
+                def remove():
+                    dialog.close()
+                    _del(aid)
+
+                with ui.row().classes("w-full items-center gap-2 mt-2"):
+                    ui.button("Delete", icon="delete_outline", on_click=remove).props("flat no-caps color=negative")
+                    ui.space()
+                    ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                    ui.button("Save", on_click=save).props("color=primary unelevated no-caps")
+            dialog.open()
 
         with ui.expansion("Add account", icon="add").classes("w-full"):
             with ui.column().classes("gap-1 max-w-xl w-full"):
@@ -123,23 +184,17 @@ def accounts_page():
                 empty_state("No accounts yet -- add your current, savings, cash or credit accounts to track net worth.",
                             "account_balance")
 
-        for group, title, types in (("assets", "Assets", ASSET_TYPES), ("liab", "Liabilities", LIABILITY_TYPES)):
+        for title, types in (("Assets", ASSET_TYPES), ("Liabilities", LIABILITY_TYPES)):
             group_accs = [t for t in accounts if t[2] in types]
             if not group_accs:
                 continue
-            with card_box().classes("w-full"):
-                section_header(title, icon="account_balance_wallet",
-                               icon_color=INDIGO if group == "assets" else RED, count=len(group_accs))
+            with ui.element("div").classes("b-day"):
+                ui.label(title)
+                ui.label(f"{CUR}{sum(t[3] for t in group_accs):,.2f}")
+            with ui.column().classes(LIST_GROUP):
                 for aid, nm, typ, bal in group_accs:
-                    with ui.row().classes("w-full items-center gap-2 py-1"):
-                        with ui.column().classes("gap-0 min-w-0 flex-grow"):
-                            ui.label(nm).classes("text-sm").style(f"color:{TEXT}")
-                            ui.label(TYPE_LABELS.get(typ, typ)).classes("text-xs").style(f"color:{TEXT_DIM}")
-                        bal_in = ui.number(value=bal, format="%.2f").props(f'prefix="{CUR}" dense').classes("w-32")
-
-                        def save_bal(_=None, aid=aid, bal_in=bal_in):
-                            _save_balance(aid, bal_in.value)
-                        ui.button(icon="save", on_click=save_bal).props("flat round dense color=primary").tooltip("Save balance")
-                        ui.button(icon="delete", on_click=lambda _, aid=aid: _del(aid)).props("flat round dense color=red")
+                    icon, color = TYPE_ICONS.get(typ, ("account_balance_wallet", INDIGO))
+                    list_row(icon, color, nm, TYPE_LABELS.get(typ, typ), f"{CUR}{bal:,.2f}",
+                             lambda _, a=(aid, nm, typ, bal): open_account(*a), tooltip="Update balance")
 
     content()

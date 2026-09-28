@@ -327,6 +327,7 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 .b-fig + .b-fig { padding-left: 20px; border-left: 1px solid var(--b-border); }
 .b-fig-label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
   color: var(--b-text-dim); }
+.b-fig-sub { font-size: 12px; color: var(--b-text-dim); margin-top: 2px; }
 .b-fig-label .dot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
 .b-fig-num { font-size: 30px; font-weight: 800; letter-spacing: -.03em; line-height: 1.15;
   color: var(--b-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

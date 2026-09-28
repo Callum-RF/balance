@@ -20,18 +20,22 @@ from ..components import (
     page_header,
     section_header,
     summary_strip,
+    thin_meter,
+    undo_banner,
 )
 from ..theme import (
     AMBER,
+    BORDER,
     EMERALD,
     INDIGO,
-    SURFACE_2,
+    SURFACE,
     TEXT_DIM,
 )
 
 
 def savings_page():
-    page_header("Savings Goals", "Targets, pace, and what it takes to hit them.", icon="savings")
+    page_header("Savings Goals", "Targets, pace, and what it takes to hit them.")
+    undo_container = ui.column().classes("w-full")
     @ui.refreshable
     def content():
         today = date.today()
@@ -79,16 +83,69 @@ def savings_page():
                 if g:
                     g.saved_amount = (g.saved_amount or 0) + amount
                     session.add(g); session.commit()
+                    name = g.name
+            ui.notify(f"Added {CUR}{amount:,.2f} to {name}.", type="positive")
             content.refresh()
 
         def _del(gid):
             with Session(engine) as session:
                 g = session.get(SavingsGoal, gid)
-                if g:
-                    session.delete(g)
+                if not g:
+                    return
+                snapshot = g.model_dump(exclude={"id"})
+                session.delete(g)
                 session.commit()
-            ui.notify("Goal deleted.", type="info")
+
+            def undo():
+                with Session(engine) as session:
+                    session.add(SavingsGoal(**snapshot))
+                    session.commit()
+                ui.notify("Restored.", type="positive")
+                content.refresh()
+
             content.refresh()
+            undo_banner(undo_container, f"Deleted {snapshot['name']}.", undo)
+
+        def open_goal(gid):
+            with Session(engine) as session:
+                g = session.get(SavingsGoal, gid)
+                if not g:
+                    return
+                cur = g.model_dump()
+            with ui.dialog() as dialog, ui.card().classes(
+                    f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
+                section_header(cur["name"], subtitle="Edit goal")
+                e_name = ui.input(label="Goal", value=cur["name"]).props("dense").classes("w-full")
+                e_target = ui.number(label="Target", value=cur["target_amount"], format="%.2f").props(
+                    f'dense prefix="{CUR}"').classes("w-full")
+                e_saved = ui.number(label="Saved so far", value=cur["saved_amount"], format="%.2f").props(
+                    f'dense prefix="{CUR}"').classes("w-full")
+                e_date = date_field("Target date (optional)",
+                                    value=cur["target_date"].isoformat() if cur["target_date"] else "")
+
+                def save():
+                    with Session(engine) as session:
+                        g = session.get(SavingsGoal, gid)
+                        if g:
+                            g.name = e_name.value or g.name
+                            g.target_amount = e_target.value or g.target_amount
+                            g.saved_amount = e_saved.value or 0
+                            g.target_date = date.fromisoformat(e_date.value) if e_date.value else None
+                            session.add(g)
+                            session.commit()
+                    dialog.close()
+                    content.refresh()
+
+                def remove():
+                    dialog.close()
+                    _del(gid)
+
+                with ui.row().classes("w-full items-center gap-2 mt-2"):
+                    ui.button("Delete", icon="delete_outline", on_click=remove).props("flat no-caps color=negative")
+                    ui.space()
+                    ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                    ui.button("Save", on_click=save).props("color=primary unelevated no-caps")
+            dialog.open()
 
         with ui.expansion("New goal", icon="add").classes("w-full"):
             with ui.column().classes("gap-1 max-w-xl w-full"):
@@ -120,15 +177,12 @@ def savings_page():
             pct = min(saved / target * 100, 100) if target else 0
             reached = bool(target) and saved >= target
             with card_box().classes("w-full"):
-                with section_header(g.name, icon="savings", icon_color=EMERALD,
-                                    subtitle=f"{CUR}{saved:,.2f} of {CUR}{target:,.2f}"):
+                with section_header(g.name, subtitle=f"{CUR}{saved:,.2f} of {CUR}{target:,.2f} · {pct:.0f}%"):
                     if reached:
                         badge("Reached", EMERALD)
-                    ui.button(icon="delete", on_click=lambda _, gid=g.id: _del(gid)).props("flat round dense color=red")
-                with ui.element("div").classes("w-full rounded-full h-2 mt-1").style(f"background:{SURFACE_2}"):
-                    ui.element("div").classes("rounded-full h-2").style(
-                        f"background:{EMERALD if reached else INDIGO}; width:{pct}%")
-                ui.label(f"{pct:.0f}%").classes("text-xs").style(f"color:{TEXT_DIM}")
+                    ui.button(icon="edit", on_click=lambda _, gid=g.id: open_goal(gid)).props(
+                        "flat round dense").classes("b-icon-btn").tooltip("Edit or delete")
+                thin_meter(saved, target, EMERALD if reached else INDIGO, height="h-2")
                 if g.target_date and not reached:
                     days_left = (g.target_date - today).days
                     remaining = target - saved
@@ -148,12 +202,18 @@ def savings_page():
                              f"redirecting it all would get you there in ~{months:.0f} months.").classes(
                         "text-xs").style(f"color:{TEXT_DIM}")
                 if not reached:
-                    with ui.row().classes("w-full items-end gap-2 mt-1"):
-                        amt = ui.number(label="Add contribution", format="%.2f").props(f'prefix="{CUR}" dense').classes("w-40")
+                    with ui.row().classes("w-full items-center gap-2 mt-1"):
+                        with ui.element("div").classes("b-pills"):
+                            for step in (10, 25, 50):
+                                with ui.element("div").classes("b-pill").on(
+                                        "click", lambda gid=g.id, st=step: _contribute(gid, st)):
+                                    ui.label(f"+{CUR}{step}")
+                        amt = ui.number(placeholder="Other", format="%.2f").props(
+                            f'prefix="{CUR}" dense outlined').classes("w-28")
 
                         def contribute(_=None, gid=g.id, amt=amt):
                             if amt.value:
                                 _contribute(gid, amt.value)
-                        ui.button("Add", icon="add", on_click=contribute).props("unelevated no-caps color=primary")
+                        ui.button("Add", on_click=contribute).props("flat dense no-caps color=primary")
 
     content()

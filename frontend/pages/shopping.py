@@ -15,8 +15,8 @@ from backend.models import (
 
 from ..common import CUR, _category_label
 from ..components import (
-    badge,
     card_box,
+    card_box_accent,
     empty_state,
     page_header,
     section_header,
@@ -26,13 +26,13 @@ from ..theme import (
     AMBER,
     EMERALD,
     INDIGO,
-    TEXT,
+    LIST_GROUP,
     TEXT_DIM,
 )
 
 
 def shopping_page():
-    page_header("Shopping List", "What to buy, linked to pantry and spend.", icon="shopping_cart")
+    page_header("Shopping List", "What to buy, linked to pantry and spend.")
 
     @ui.refreshable
     def content():
@@ -93,24 +93,31 @@ def shopping_page():
                 content.refresh()
             ui.button("Add", icon="add", on_click=add_item).props("unelevated no-caps color=primary")
 
-        with card_box().classes("w-full"):
-            section_header("Items", icon="shopping_cart", icon_color=INDIGO, count=len(to_buy))
-            if not items:
+        if not items:
+            with card_box().classes("w-full"):
                 empty_state("Your list is empty -- add items above, or pull from Suggestions below.", "shopping_cart")
-            for i in sorted(items, key=lambda x: (x.done, (x.name or "").lower())):
-                with ui.row().classes("w-full items-center gap-2 py-1"):
-                    ui.checkbox(value=i.done, on_change=lambda e, iid=i.id: _toggle(iid, e.value)).props("dense")
-                    lbl = i.name + (f" · {i.quantity_note}" if i.quantity_note else "")
-                    ui.label(lbl).classes("text-sm flex-grow min-w-0").style(
-                        f"color:{TEXT_DIM if i.done else TEXT}" + ("; text-decoration:line-through" if i.done else ""))
-                    if i.source != "manual":
-                        badge(i.source, TEXT_DIM)
-                    ui.button(icon="close", on_click=lambda _, iid=i.id: _del(iid)).props("flat round dense").style(f"color:{TEXT_DIM}")
+        else:
+            with ui.element("div").classes("b-day"):
+                ui.label("On the list")
+                ui.label(f"{len(to_buy)} to buy")
+            with ui.column().classes(LIST_GROUP):
+                for i in sorted(items, key=lambda x: (x.done, (x.name or "").lower())):
+                    with ui.element("div").classes("b-row").style("cursor:default; padding-left:8px"):
+                        ui.checkbox(value=i.done, on_change=lambda e, iid=i.id: _toggle(iid, e.value)).props(
+                            "color=primary")
+                        with ui.element("div").classes("b-row-text"):
+                            ui.label(i.name).classes("b-row-title").style(
+                                "text-decoration:line-through; opacity:.6" if i.done else "")
+                            sub = " · ".join(x for x in (i.quantity_note, (i.location or "pantry").capitalize(),
+                                                          None if i.source == "manual" else f"from {i.source}") if x)
+                            ui.label(sub).classes("b-row-sub")
+                        ui.button(icon="close", on_click=lambda _, iid=i.id: _del(iid)).props(
+                            "flat round dense").classes("b-icon-btn").tooltip("Remove")
 
         if items:
             with card_box().classes("w-full"):
-                section_header("Bought the checked items?", icon="check_circle", icon_color=EMERALD, accent=EMERALD,
-                               subtitle="Move them into your pantry, and optionally record the grocery spend in one go.")
+                section_header("Bought the ticked items?",
+                               subtitle="Move them into your pantry, and record the grocery spend in one go.")
                 with ui.row().classes("w-full items-end gap-2 flex-wrap"):
                     spend_input = ui.number(label="Total spent (optional)", format="%.2f").props(f'prefix="{CUR}"').classes("w-40")
                     spend_cat = ui.select(category_options, value=default_grocery_cat, label="Category").props("dense options-dense").classes("w-48")
@@ -169,15 +176,20 @@ def shopping_page():
                 suggestions.append((nm, "pantry", "recurring", "you buy this repeatedly"))
 
         if suggestions:
-            with card_box().classes("w-full"):
-                section_header("Suggestions", icon="lightbulb", icon_color=AMBER,
-                               subtitle="From pantry stock that's low, used up or expiring -- and things you buy repeatedly.")
-                for nm, loc, src, reason in suggestions[:20]:
-                    with ui.row().classes("w-full items-center gap-2 py-1"):
-                        with ui.column().classes("gap-0 flex-grow min-w-0"):
-                            ui.label(nm).classes("text-sm").style(f"color:{TEXT}")
-                            ui.label(reason).classes("text-xs").style(f"color:{TEXT_DIM}")
-                        ui.button("Add", icon="add", on_click=lambda _, n=nm, l=loc, s=src: _add_suggestion(n, l, s)).props(
-                            "flat dense no-caps color=primary")
+            with card_box_accent().classes("w-full gap-1"):
+                section_header("Suggestions",
+                               subtitle="Running low, used up or expiring -- and things you buy repeatedly")
+                with ui.column().classes("w-full gap-0"):
+                    for nm, loc, src, reason in suggestions[:20]:
+                        with ui.element("div").classes("b-nudge").on(
+                                "click", lambda n=nm, l=loc, s=src: _add_suggestion(n, l, s)):
+                            ui.element("span").classes("dot").style(
+                                f"background:{AMBER if 'expir' in reason else INDIGO}")
+                            with ui.column().classes("b-nudge-text gap-0"):
+                                ui.label(nm).classes("font-semibold")
+                                ui.label(reason.replace(" -- ", " · ")).classes("text-xs").style(f"color:{TEXT_DIM}")
+                            with ui.element("div").classes("b-nudge-cta"):
+                                ui.label("Add")
+                                ui.icon("add")
 
     content()

@@ -19,12 +19,15 @@ from ..common import (
     TAG_OPTIONS,
     format_date_header,
     group_by_date,
+    set_page_refresh,
 )
 from ..components import (
-    card_box,
     date_field,
     empty_state,
+    form_frame,
+    list_row,
     page_header,
+    pill_toggle,
     section_header,
     segmented,
     summary_strip,
@@ -37,7 +40,6 @@ from ..theme import (
     INDIGO,
     LIST_GROUP,
     SURFACE,
-    TEXT,
     TEXT_DIM,
     alpha,
 )
@@ -46,12 +48,11 @@ from ..theme import (
 # ---------------------------------------------------------------------------
 # Add / list food log
 # ---------------------------------------------------------------------------
-def render_add_food_form(on_saved=None):
+def render_add_food_form(on_saved=None, compact=False):
     """Builds the add-food form in whatever container is currently active.
     Reused by both the standalone /add-food page and the Add tab on the
     merged /food-log page."""
-    with card_box().classes("w-full max-w-xl"):
-        section_header("Add Food Entry", icon="restaurant", icon_color=INDIGO)
+    with form_frame("Add Food Entry", "restaurant", INDIGO, compact):
 
         date_input = date_field("Date", value=date.today().isoformat())
         meal_select = segmented(
@@ -263,246 +264,225 @@ def add_food_page():
     render_add_food_form()
 
 
+# The fields carried over when an entry is logged again.
+NUTRIENT_COPY_FIELDS = (
+    "food_name", "barcode", "quantity_g", "calories", "protein_g", "carbs_g", "fat_g",
+    "fiber_g", "sugar_g", "sodium_mg", "saturated_fat_g", "trans_fat_g",
+    "added_sugar_g", "alcohol_g", "caffeine_mg",
+)
+
+
+def relog_food(eid):
+    """Copy an existing entry onto today, keeping all its nutrition -- the most
+    common food-logging action by far. Returns the food's name."""
+    with Session(engine) as session:
+        src = session.get(FoodLog, eid)
+        if not src:
+            return None
+        data = {f: getattr(src, f) for f in NUTRIENT_COPY_FIELDS}
+        data.update(date=date.today(), meal_type=src.meal_type, tag=src.tag)
+        session.add(FoodLog(**data))
+        session.commit()
+    return data["food_name"]
+
+
+def recent_foods(limit: int = 8):
+    """Your most recently logged distinct foods, for one-tap re-logging."""
+    with Session(engine) as session:
+        recent = session.exec(
+            select(FoodLog).order_by(FoodLog.date.desc(), FoodLog.id.desc()).limit(120)
+        ).all()
+    seen, favourites = set(), []
+    for e in recent:
+        key = (e.food_name or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        favourites.append(e)
+        if len(favourites) >= limit:
+            break
+    return favourites
+
+
+MEALS = {None: "All", "breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"}
+
+
 def food_log_page():
-    page_header("Food Log", "What you ate today, measured against your targets.", icon="restaurant")
+    page_header("Food Log", "What you ate today, measured against your targets.")
 
-    _today = date.today()
-    with Session(engine) as _s:
-        _tf = _s.exec(select(FoodLog).where(FoodLog.date == _today)).all()
-        _g = _s.exec(select(NutrientGoals)).first() or NutrientGoals()
-    _cal = sum(f.calories or 0 for f in _tf)
-    _pro = sum(f.protein_g or 0 for f in _tf)
-    summary_strip([
-        ("Calories today", f"{_cal:,.0f}" + (f" / {_g.calories:,.0f}" if _g.calories else ""), INDIGO),
-        ("Protein today", f"{_pro:,.0f}g" + (f" / {_g.protein_g:,.0f}g" if _g.protein_g else ""), EMERALD),
-        ("Meals logged", str(len(_tf)), AMBER),
-    ])
+    @ui.refreshable
+    def figures():
+        today = date.today()
+        with Session(engine) as s:
+            tf = s.exec(select(FoodLog).where(FoodLog.date == today)).all()
+            g = s.exec(select(NutrientGoals)).first() or NutrientGoals()
+        cal = sum(f.calories or 0 for f in tf)
+        pro = sum(f.protein_g or 0 for f in tf)
+        summary_strip([
+            ("Calories today", f"{cal:,.0f}" + (f" / {g.calories:,.0f}" if g.calories else ""), INDIGO),
+            ("Protein today", f"{pro:,.0f}g" + (f" / {g.protein_g:,.0f}g" if g.protein_g else ""), EMERALD),
+            ("Meals logged", str(len(tf)), AMBER),
+        ])
 
-    with ui.tabs().classes("w-full") as tabs:
-        log_tab = ui.tab("Log", icon="list")
-        add_tab = ui.tab("Add", icon="add")
+    figures()
+    state = {"meal": None}
 
-    with ui.tab_panels(tabs, value=log_tab).props('swipeable animated transition-prev="fade" transition-next="fade" transition-duration="260"').classes("w-full bg-transparent min-h-[70vh]") as panels:
-        with ui.tab_panel(log_tab).classes("p-0 min-h-[70vh]"):
-            undo_container = ui.column().classes("w-full pt-4")
+    # --- toolbar: search and meal pills ---
+    with ui.element("div").classes("b-toolbar mt-1"):
+        search_input = ui.input(placeholder="Search food or tag").props(
+            "dense outlined clearable debounce=300").classes("b-field")
+        with search_input.add_slot("prepend"):
+            ui.icon("search").classes("text-lg").style(f"color:{TEXT_DIM}")
+    pill_toggle({k or "all": v for k, v in MEALS.items()}, "all",
+                lambda k: (state.update(meal=None if k == "all" else k), refresh()))
+    result_summary = ui.label().classes("b-count")
+    undo_container = ui.column().classes("w-full")
+    list_container = ui.column().classes("w-full gap-0")
 
-            with card_box().classes("w-full gap-2"):
-                with ui.row().classes("w-full items-center gap-2 flex-wrap"):
-                    search_input = ui.input(placeholder="Search food or tag").props(
-                        "dense clearable debounce=300"
-                    ).classes("flex-grow min-w-[160px]")
-                    with search_input.add_slot("prepend"):
-                        ui.icon("search").classes("text-base").style(f"color:{TEXT_DIM}")
-                    meal_filter = ui.select(
-                        {None: "All meals", "breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"},
-                        value=None, label="Meal",
-                    ).props("dense options-dense").classes("w-40")
-                result_summary = ui.label().classes("text-xs").style(f"color:{TEXT_DIM}")
+    def query_food():
+        with Session(engine) as session:
+            query = select(FoodLog)
+            if state["meal"]:
+                query = query.where(FoodLog.meal_type == state["meal"])
+            entries = session.exec(query.order_by(FoodLog.date.desc()).limit(400)).all()
+        term = (search_input.value or "").strip().lower()
+        if term:
+            entries = [e for e in entries if term in (e.food_name or "").lower() or term in (e.tag or "").lower()]
+        return entries
 
-            list_container = ui.column().classes("w-full gap-2")
+    _DISPLAY = {"limit": 60}
 
-            def query_food():
-                with Session(engine) as session:
-                    query = select(FoodLog)
-                    if meal_filter.value:
-                        query = query.where(FoodLog.meal_type == meal_filter.value)
-                    entries = session.exec(query.order_by(FoodLog.date.desc()).limit(400)).all()
-                term = (search_input.value or "").strip().lower()
-                if term:
-                    entries = [e for e in entries if term in (e.food_name or "").lower() or term in (e.tag or "").lower()]
-                return entries
-
-            _DISPLAY = {"limit": 60}
-
-            def render_list():
-                list_container.clear()
-                entries = query_food()
-                filters_active = bool((search_input.value or "").strip() or meal_filter.value)
-                if entries:
-                    total = sum(e.calories or 0 for e in entries)
-                    result_summary.set_text(f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} · {total:,.0f} kcal")
+    def render_list():
+        list_container.clear()
+        entries = query_food()
+        filters_active = bool((search_input.value or "").strip() or state["meal"])
+        if entries:
+            total = sum(e.calories or 0 for e in entries)
+            result_summary.set_text(f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} · {total:,.0f} kcal")
+        else:
+            result_summary.set_text("")
+        shown = entries[:_DISPLAY["limit"]]
+        with list_container:
+            if not entries:
+                if filters_active:
+                    empty_state("No food matches these filters.", "search_off")
                 else:
-                    result_summary.set_text("")
-                shown = entries[:_DISPLAY["limit"]]
-                with list_container:
-                    if not entries:
-                        if filters_active:
-                            empty_state("No food matches these filters.", "search_off")
-                        else:
-                            empty_state("No food logged yet -- swipe right or tap \"Add\" to log your first entry.", "restaurant")
-                    for group_date, day_entries in group_by_date(shown):
-                        day_total = sum(e.calories or 0 for e in day_entries)
-                        with ui.row().classes("w-full items-baseline justify-between mt-3 mb-1 px-1"):
-                            ui.label(format_date_header(group_date)).classes("text-xs font-semibold uppercase tracking-wide").style(f"color:{TEXT_DIM}")
-                            ui.label(f"{day_total:,.0f} kcal").classes("text-xs font-semibold").style(f"color:{TEXT_DIM}")
-                        with ui.column().classes(LIST_GROUP):
-                            for idx, e in enumerate(day_entries):
-                                if idx:
-                                    ui.element("div").classes("h-px w-full").style(f"background:{BORDER}")
-                                icon, icon_color = MEAL_ICONS.get(e.meal_type, ("restaurant", TEXT_DIM))
-                                with ui.row().classes("w-full items-center justify-between gap-2 px-3 py-2.5 no-wrap"):
-                                    with ui.row().classes("flex-1 items-center gap-3 min-w-0 no-wrap"):
-                                        ui.icon(icon).classes("text-xl shrink-0").style(f"color:{icon_color}")
-                                        with ui.column().classes("gap-0 min-w-0"):
-                                            ui.label(e.food_name).classes("font-medium truncate w-full")
-                                            sub = f"{(e.meal_type or 'meal').capitalize()}"
-                                            if e.tag:
-                                                sub += f" · {e.tag}"
-                                            ui.label(sub).classes("text-xs truncate").style(f"color:{TEXT_DIM}")
-                                    with ui.row().classes("items-center gap-0.5 shrink-0 no-wrap"):
-                                        ui.label(f"{e.calories or 0:,.0f} kcal").classes("font-semibold text-sm whitespace-nowrap")
-                                        ui.button(icon="content_copy", on_click=lambda _, eid=e.id: relog_entry(eid)).props("flat round dense size=sm").tooltip("Log this again today")
-                                        ui.button(icon="edit", on_click=lambda _, eid=e.id: open_edit_food(eid)).props("flat round dense size=sm").tooltip("Edit")
-                                        ui.button(icon="delete", on_click=lambda _, eid=e.id: delete_entry(eid)).props("flat round dense color=red size=sm")
-                    remaining = len(entries) - len(shown)
-                    if remaining > 0:
-                        def _more():
-                            _DISPLAY["limit"] += 100
-                            render_list()
-                        ui.button(f"Show more ({remaining} remaining)", icon="expand_more", on_click=_more).props(
-                            "flat no-caps color=primary").classes("self-center mt-2")
+                    empty_state("No food logged yet -- tap + to log your first entry.", "restaurant")
+            for group_date, day_entries in group_by_date(shown):
+                day_total = sum(e.calories or 0 for e in day_entries)
+                with ui.element("div").classes("b-day"):
+                    ui.label(format_date_header(group_date))
+                    ui.label(f"{day_total:,.0f} kcal")
+                with ui.column().classes(LIST_GROUP):
+                    for e in day_entries:
+                        icon, icon_color = MEAL_ICONS.get(e.meal_type, ("restaurant", TEXT_DIM))
+                        sub = f"{(e.meal_type or 'meal').capitalize()}"
+                        if e.protein_g:
+                            sub += f" · {e.protein_g:,.0f}g protein"
+                        if e.tag:
+                            sub += f" · {e.tag}"
+                        list_row(icon, icon_color, e.food_name, sub, f"{e.calories or 0:,.0f} kcal",
+                                 lambda _, eid=e.id: open_edit_food(eid))
+            remaining = len(entries) - len(shown)
+            if remaining > 0:
+                def _more():
+                    _DISPLAY["limit"] += 100
+                    render_list()
+                ui.button(f"Show more ({remaining} remaining)", icon="expand_more", on_click=_more).props(
+                    "flat no-caps color=primary").classes("self-center mt-2")
 
-            def refresh():
-                _DISPLAY["limit"] = 60   # reset to the top whenever filters change
-                render_list()
+    def refresh():
+        _DISPLAY["limit"] = 60   # reset to the top whenever filters change
+        render_list()
 
-            NUTRIENT_COPY_FIELDS = (
-                "food_name", "barcode", "quantity_g", "calories", "protein_g", "carbs_g", "fat_g",
-                "fiber_g", "sugar_g", "sodium_mg", "saturated_fat_g", "trans_fat_g",
-                "added_sugar_g", "alcohol_g", "caffeine_mg",
-            )
+    def refresh_all():
+        figures.refresh()
+        refresh()
 
-            def relog_entry(eid):
-                """One-tap re-log: copy an existing entry onto today, keeping all
-                its nutrition. The most common food-logging action by far."""
-                with Session(engine) as session:
-                    src = session.get(FoodLog, eid)
-                    if not src:
-                        return
-                    data = {f: getattr(src, f) for f in NUTRIENT_COPY_FIELDS}
-                    data.update(date=date.today(), meal_type=src.meal_type, tag=src.tag)
-                    session.add(FoodLog(**data))
-                    session.commit()
-                ui.notify(f"Logged {data['food_name']} for today.", type="positive")
-                refresh()
+    def open_edit_food(eid):
+        """The whole entry: edit it, log it again today, or delete it."""
+        with Session(engine) as session:
+            e = session.get(FoodLog, eid)
+            if not e:
+                return
+            cur = {f: getattr(e, f) for f in NUTRIENT_COPY_FIELDS}
+            cur.update(date=e.date.isoformat(), meal_type=e.meal_type or "lunch", tag=e.tag or "")
 
-            def open_edit_food(eid):
-                with Session(engine) as session:
-                    e = session.get(FoodLog, eid)
-                    if not e:
-                        return
-                    cur = {f: getattr(e, f) for f in NUTRIENT_COPY_FIELDS}
-                    cur.update(date=e.date.isoformat(), meal_type=e.meal_type or "lunch", tag=e.tag or "")
+        with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
+            section_header("Food entry", icon="edit", icon_color=INDIGO)
+            e_date = date_field("Date", value=cur["date"])
+            e_meal = segmented("Meal", {"breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"},
+                               cur["meal_type"] if cur["meal_type"] in ("breakfast", "lunch", "dinner", "snack") else "lunch")
+            e_name = ui.input(label="Food name", value=cur["food_name"]).classes("w-full")
+            e_qty = ui.number(label="Quantity (g)", value=cur["quantity_g"], format="%g").classes("w-full")
+            e_cal = ui.number(label="Calories", value=cur["calories"]).props(
+                'suffix="kcal" input-class="text-xl font-bold"'
+            ).classes("w-full")
+            with ui.grid().classes("w-full grid-cols-3 gap-x-3 gap-y-1"):
+                e_prot = ui.number(label="Protein (g)", value=cur["protein_g"]).classes("w-full")
+                e_carb = ui.number(label="Carbs (g)", value=cur["carbs_g"]).classes("w-full")
+                e_fat = ui.number(label="Fat (g)", value=cur["fat_g"]).classes("w-full")
+            e_tag = ui.select(TAG_OPTIONS, value=cur["tag"], label="Tag (context)").classes("w-full")
 
-                with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
-                    section_header("Edit food entry", icon="edit", icon_color=INDIGO)
-                    e_date = date_field("Date", value=cur["date"])
-                    e_meal = segmented("Meal", {"breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"},
-                                       cur["meal_type"] if cur["meal_type"] in ("breakfast", "lunch", "dinner", "snack") else "lunch")
-                    e_name = ui.input(label="Food name", value=cur["food_name"]).classes("w-full")
-                    e_qty = ui.number(label="Quantity (g)", value=cur["quantity_g"], format="%g").classes("w-full")
-                    e_cal = ui.number(label="Calories", value=cur["calories"]).props(
-                        'suffix="kcal" input-class="text-xl font-bold"'
-                    ).classes("w-full")
-                    with ui.grid().classes("w-full grid-cols-3 gap-x-3 gap-y-1"):
-                        e_prot = ui.number(label="Protein (g)", value=cur["protein_g"]).classes("w-full")
-                        e_carb = ui.number(label="Carbs (g)", value=cur["carbs_g"]).classes("w-full")
-                        e_fat = ui.number(label="Fat (g)", value=cur["fat_g"]).classes("w-full")
-                    e_tag = ui.select(TAG_OPTIONS, value=cur["tag"], label="Tag (context)").classes("w-full")
-
-                    def save_edit():
-                        with Session(engine) as session:
-                            obj = session.get(FoodLog, eid)
-                            if obj:
-                                obj.date = date.fromisoformat(e_date.value)
-                                obj.meal_type = e_meal.value
-                                obj.food_name = e_name.value or obj.food_name
-                                obj.quantity_g = e_qty.value or 0
-                                obj.calories = e_cal.value
-                                obj.protein_g = e_prot.value
-                                obj.carbs_g = e_carb.value
-                                obj.fat_g = e_fat.value
-                                obj.tag = e_tag.value or None
-                                session.add(obj)
-                                session.commit()
-                        dialog.close()
-                        ui.notify("Food entry updated.", type="positive")
-                        refresh()
-
-                    with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                        ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
-                        ui.button("Save", on_click=save_edit).props("color=primary unelevated no-caps")
-                dialog.open()
-
-            def delete_entry(eid):
+            def save_edit():
                 with Session(engine) as session:
                     obj = session.get(FoodLog, eid)
-                    if not obj:
-                        return
-                    snapshot = {f: getattr(obj, f) for f in NUTRIENT_COPY_FIELDS}
-                    snapshot.update(date=obj.date, meal_type=obj.meal_type, tag=obj.tag)
-                    session.delete(obj)
-                    session.commit()
-
-                def undo_delete():
-                    with Session(engine) as session:
-                        session.add(FoodLog(**snapshot))
+                    if obj:
+                        obj.date = date.fromisoformat(e_date.value)
+                        obj.meal_type = e_meal.value
+                        obj.food_name = e_name.value or obj.food_name
+                        obj.quantity_g = e_qty.value or 0
+                        obj.calories = e_cal.value
+                        obj.protein_g = e_prot.value
+                        obj.carbs_g = e_carb.value
+                        obj.fat_g = e_fat.value
+                        obj.tag = e_tag.value or None
+                        session.add(obj)
                         session.commit()
-                    ui.notify("Restored.", type="positive")
-                    refresh()
+                dialog.close()
+                ui.notify("Food entry updated.", type="positive")
+                refresh_all()
 
-                refresh()
-                undo_banner(undo_container, f"Deleted {snapshot['food_name']}.", undo_delete)
+            def again():
+                dialog.close()
+                name = relog_food(eid)
+                ui.notify(f"Logged {name} for today.", type="positive")
+                refresh_all()
 
-            search_input.on_value_change(lambda e: refresh())
-            meal_filter.on_value_change(lambda e: refresh())
-            refresh()
+            def delete_it():
+                dialog.close()
+                delete_entry(eid)
 
-        with ui.tab_panel(add_tab).classes("p-0 min-h-[70vh]"):
-            def on_saved():
-                refresh()
-                quick_add_card.refresh()
-                tabs.set_value(log_tab)
+            ui.button("Log this again today", icon="replay", on_click=again).props(
+                "flat dense no-caps color=primary").classes("self-start")
+            with ui.row().classes("w-full items-center gap-2 mt-2"):
+                ui.button("Delete", icon="delete_outline", on_click=delete_it).props(
+                    "flat no-caps color=negative")
+                ui.space()
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button("Save", on_click=save_edit).props("color=primary unelevated no-caps")
+        dialog.open()
 
-            with ui.column().classes("w-full items-center pt-4 gap-4"):
-                @ui.refreshable
-                def quick_add_card():
-                    """Your most-logged foods as one-tap chips. Logging the same
-                    handful of meals is the common case, so this skips the form
-                    entirely -- tap a chip and it's on today's log."""
-                    with Session(engine) as session:
-                        recent = session.exec(
-                            select(FoodLog).order_by(FoodLog.date.desc(), FoodLog.id.desc()).limit(120)
-                        ).all()
-                    seen, favourites = set(), []
-                    for e in recent:
-                        key = (e.food_name or "").strip().lower()
-                        if not key or key in seen:
-                            continue
-                        seen.add(key)
-                        favourites.append(e)
-                        if len(favourites) >= 8:
-                            break
-                    if not favourites:
-                        return
-                    with card_box().classes("w-full max-w-xl"):
-                        section_header("Quick add", icon="bolt", icon_color=AMBER,
-                                       subtitle="Tap a recent food to log it for today")
-                        with ui.row().classes("w-full gap-2 flex-wrap"):
-                            for f in favourites:
-                                icon, icon_color = MEAL_ICONS.get(f.meal_type, ("restaurant", TEXT_DIM))
-                                with ui.button(on_click=lambda _, fid=f.id: quick_log(fid)).props(
-                                    "outline dense no-caps"
-                                ).classes("normal-case").style(f"border-color:{BORDER}; color:{TEXT};"):
-                                    with ui.row().classes("items-center gap-2 no-wrap"):
-                                        ui.icon(icon).classes("text-base").style(f"color:{icon_color}")
-                                        with ui.column().classes("gap-0 items-start"):
-                                            ui.label(f.food_name).classes("text-xs font-medium leading-tight")
-                                            ui.label(f"{f.calories or 0:,.0f} kcal").classes("text-[10px] leading-tight").style(f"color:{TEXT_DIM}")
+    def delete_entry(eid):
+        with Session(engine) as session:
+            obj = session.get(FoodLog, eid)
+            if not obj:
+                return
+            snapshot = {f: getattr(obj, f) for f in NUTRIENT_COPY_FIELDS}
+            snapshot.update(date=obj.date, meal_type=obj.meal_type, tag=obj.tag)
+            session.delete(obj)
+            session.commit()
 
-                def quick_log(fid):
-                    relog_entry(fid)
-                    quick_add_card.refresh()
+        def undo_delete():
+            with Session(engine) as session:
+                session.add(FoodLog(**snapshot))
+                session.commit()
+            ui.notify("Restored.", type="positive")
+            refresh_all()
 
-                quick_add_card()
-                render_add_food_form(on_saved=on_saved)
+        refresh_all()
+        undo_banner(undo_container, f"Deleted {snapshot['food_name']}.", undo_delete)
+
+    search_input.on_value_change(lambda e: refresh())
+    refresh()
+    set_page_refresh(refresh_all)

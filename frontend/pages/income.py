@@ -22,6 +22,7 @@ from ..components import (
     card_box,
     date_field,
     empty_state,
+    form_frame,
     page_header,
     section_header,
     summary_strip,
@@ -41,11 +42,10 @@ from ..theme import (
 from .dashboard import render_amount_trend, render_income_summary
 
 
-def render_add_income_form(on_saved=None):
+def render_add_income_form(on_saved=None, compact=False):
     """Builds the add-income form. Reused by both the standalone
     /add-income page and the Add tab on the merged /income page."""
-    with card_box().classes("w-full max-w-xl"):
-        section_header("Add Income", icon="payments", icon_color=EMERALD)
+    with form_frame("Add Income", "payments", EMERALD, compact):
         with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"):
             date_input = date_field("Date", value=date.today().isoformat())
             amount_input = ui.number(label=f"Amount ({CUR})", value=0, format="%.2f").props("dense").classes("w-full")

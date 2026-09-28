@@ -22,7 +22,9 @@ from .theme import (
     EMERALD,
     INDIGO,
     RED,
+    SKY,
     TEXT_DIM,
+    VIOLET,
     apply_theme,
 )
 
@@ -427,3 +429,39 @@ def detect_recurring_transactions(transactions, existing_sub_names, exclude_cate
 
     candidates.sort(key=lambda c: (-c["count"], -c["typical_amount"]))
     return candidates
+
+
+# Each spending category's icon and colour, so a list reads at a glance. Colours
+# are theme tokens, so they stay legible in both modes. Anything unlisted (a
+# category added later) falls back to a neutral receipt.
+CATEGORY_STYLE = {
+    "Groceries": ("shopping_basket", EMERALD),
+    "Eating Out": ("restaurant", AMBER),
+    "Entertainment": ("movie", VIOLET),
+    "Transport": ("directions_bus", SKY),
+    "Bills & Utilities": ("bolt", INDIGO),
+    "Subscriptions": ("autorenew", VIOLET),
+    "Health & Fitness": ("fitness_center", RED),
+    "Shopping": ("shopping_bag", AMBER),
+    "Miscellaneous": ("category", TEXT_DIM),
+    "Education": ("school", SKY),
+    "Travel": ("flight", EMERALD),
+}
+
+
+def category_style(name):
+    return CATEGORY_STYLE.get(name or "", ("receipt_long", TEXT_DIM))
+
+
+def set_page_refresh(fn) -> None:
+    """Register how the page on screen redraws its data. Adding something from
+    the quick-add sheet calls it, so the list underneath updates in place. The
+    router clears it on every page change (see ui.py), so a page that doesn't
+    register one is never handed a stale callback from the page before."""
+    ui.context.client.b_page_refresh = fn
+
+
+def refresh_page() -> None:
+    fn = getattr(ui.context.client, "b_page_refresh", None)
+    if fn:
+        fn()

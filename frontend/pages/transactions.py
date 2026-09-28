@@ -16,19 +16,23 @@ from backend.services.categorize import build_history_map, guess_category_id
 
 from ..common import (
     CUR,
-    PAYMENT_ICONS,
     TAG_OPTIONS,
     _category_label,
     _read_upload_bytes,
+    category_style,
     download_csv,
     format_date_header,
     group_by_date,
+    set_page_refresh,
 )
 from ..components import (
     card_box,
     date_field,
     empty_state,
+    form_frame,
+    list_row,
     page_header,
+    pill_toggle,
     section_header,
     segmented,
     summary_strip,
@@ -51,7 +55,7 @@ from .dashboard import render_amount_trend, render_expenses
 # ---------------------------------------------------------------------------
 # Add / list transactions
 # ---------------------------------------------------------------------------
-def render_add_transaction_form(on_saved=None):
+def render_add_transaction_form(on_saved=None, compact=False):
     """Builds the add-transaction form in whatever container is currently
     active. Reused by both the standalone /add-transaction page and the
     Add tab on the merged /transactions page."""
@@ -66,10 +70,10 @@ def render_add_transaction_form(on_saved=None):
     _cat_counts = Counter(t.category_id for t in all_transactions if t.category_id)
     top_category_ids = [cid for cid, _ in _cat_counts.most_common(5)]
 
-    with card_box().classes("w-full max-w-xl"):
-        section_header("Add Transaction", icon="add_shopping_cart", icon_color=AMBER)
+    with form_frame("Add Transaction", "add_shopping_cart", AMBER, compact):
+        frame = ui.context.slot.parent
 
-        with ui.expansion("Attach receipt photo (optional)", icon="camera_alt").classes("w-full mb-1"):
+        with ui.expansion("Attach receipt photo (optional)", icon="camera_alt").classes("w-full mb-1") as receipt_exp:
             ui.label(
                 "Just keeps a copy for your own reference -- nothing is read automatically. "
                 "Type the merchant/amount/date yourself while looking at it."
@@ -113,7 +117,7 @@ def render_add_transaction_form(on_saved=None):
             ).classes("max-w-full")
             ui.button("Remove photo", icon="close", on_click=clear_receipt_photo).props("flat dense no-caps").classes("mt-1")
 
-        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"):
+        with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1") as date_grid:
             date_input = date_field("Date", value=date.today().isoformat())
             merchant_input = ui.input(label="Merchant").props("dense").classes("w-full")
 
@@ -249,6 +253,21 @@ def render_add_transaction_form(on_saved=None):
             if on_saved:
                 on_saved()
 
+        if compact:
+            # In the quick-add sheet the question is "how much, where, what for":
+            # those lead, and everything that usually keeps its default (today,
+            # card, no tag, no receipt) folds away under More details.
+            merchant_input.move(target_container=frame, target_index=0)
+            single_amount_section.move(target_container=frame, target_index=1)
+            items_section.move(target_container=frame, target_index=2)
+            with frame:
+                details = ui.expansion("More details", icon="tune",
+                                       caption="Date, payment, tag, split, receipt, notes").classes("w-full")
+            for element in (date_grid, payment_input.parent_slot.parent, tag_select, split_toggle,
+                            split_help, receipt_exp, notes_input):
+                element.move(target_container=details)
+            result_label.move(target_container=frame)
+
         ui.button("Save transaction", on_click=submit).props("color=primary unelevated")
 
 
@@ -257,277 +276,304 @@ def add_transaction_page():
 
 
 def transactions_page():
-    page_header("Transactions", "Every expense, searchable and categorised.", icon="receipt_long")
+    page_header("Transactions", "Every expense, searchable and categorised.")
 
-    _m_start = date.today().replace(day=1)
-    with Session(engine) as _s:
-        _all_tx = _s.exec(select(Transaction)).all()
-    _month_tx = [t for t in _all_tx if t.date >= _m_start]
-    summary_strip([
-        ("Spent this month", f"{CUR}{sum(t.amount for t in _month_tx):,.0f}", AMBER),
-        ("This month", f"{len(_month_tx)} txns", INDIGO),
-        ("All-time total", f"{CUR}{sum(t.amount for t in _all_tx):,.0f}", EMERALD),
-    ])
+    @ui.refreshable
+    def figures():
+        m_start = date.today().replace(day=1)
+        with Session(engine) as s:
+            all_tx = s.exec(select(Transaction)).all()
+        month_tx = [t for t in all_tx if t.date >= m_start]
+        summary_strip([
+            ("Spent this month", f"{CUR}{sum(t.amount for t in month_tx):,.0f}", AMBER),
+            ("This month", f"{len(month_tx)} txns", INDIGO),
+            ("All-time total", f"{CUR}{sum(t.amount for t in all_tx):,.0f}", EMERALD),
+        ])
 
-    with ui.tabs().classes("w-full") as tabs:
-        log_tab = ui.tab("Log", icon="list")
-        summary_tab = ui.tab("Summary", icon="bar_chart")
-        add_tab = ui.tab("Add", icon="add")
+    figures()
+    def switch_view(key):
+        log_view.set_visibility(key == "log")
+        summary_view.set_visibility(key == "summary")
 
-    # min-h-[70vh] matters here: Quasar's swipeable QTabPanels shrinks
-    # its swipe hit-area to the height of whatever content is inside,
-    # so without an explicit minimum, swiping only works where content
-    # happens to be -- not across the rest of the empty screen.
-    with ui.tab_panels(tabs, value=log_tab).props('swipeable animated transition-prev="fade" transition-next="fade" transition-duration="260"').classes("w-full bg-transparent min-h-[70vh]"):
-        with ui.tab_panel(log_tab).classes("p-0 min-h-[70vh]"):
-            with Session(engine) as session:
-                all_categories = session.exec(select(Category)).all()
-            filter_category_options = {None: "All categories"}
-            filter_category_options.update({c.id: _category_label(c, all_categories) for c in all_categories})
+    pill_toggle({"log": "Log", "summary": "Summary"}, "log", switch_view)
 
-            # --- filter bar ---
-            with card_box().classes("w-full mt-4 gap-2"):
-                with ui.row().classes("w-full items-center gap-2 flex-wrap"):
-                    search_input = ui.input(placeholder="Search merchant or notes").props(
-                        'dense clearable debounce=300'
-                    ).classes("flex-grow min-w-[180px]")
-                    with search_input.add_slot("prepend"):
-                        ui.icon("search").classes("text-base").style(f"color:{TEXT_DIM}")
-                    category_filter = ui.select(
-                        filter_category_options, value=None, label="Category"
-                    ).props("dense options-dense").classes("w-44")
-                with ui.row().classes("w-full items-center gap-2 flex-wrap"):
-                    from_input = date_field("From")
-                    to_input = date_field("To")
-                    ui.button("Clear", icon="close", on_click=lambda: clear_filters()).props("flat dense no-caps").classes("self-end")
-                    ui.space()
-                    ui.button("Export CSV", icon="download", on_click=lambda: export_transactions()).props(
-                        "outline dense no-caps color=primary"
-                    ).classes("self-end")
-                result_summary = ui.label().classes("text-xs").style(f"color:{TEXT_DIM}")
+    log_view = ui.column().classes("w-full gap-2 mt-2")
+    summary_view = ui.column().classes("w-full gap-3 mt-2")
+    summary_view.set_visibility(False)
 
-            undo_container = ui.column().classes("w-full")
-            list_container = ui.column().classes("w-full gap-2")
+    with log_view:
+        with Session(engine) as session:
+            all_categories = session.exec(select(Category)).all()
+        category_names = {c.id: c.name for c in all_categories}
+        filter_category_options = {None: "All categories"}
+        filter_category_options.update({c.id: _category_label(c, all_categories) for c in all_categories})
 
-            def query_filtered():
-                """Returns (transactions, categories_by_id) applying the active filters."""
-                with Session(engine) as session:
-                    query = select(Transaction)
-                    if category_filter.value is not None:
-                        query = query.where(Transaction.category_id == category_filter.value)
-                    if from_input.value:
-                        query = query.where(Transaction.date >= date.fromisoformat(from_input.value))
-                    if to_input.value:
-                        query = query.where(Transaction.date <= date.fromisoformat(to_input.value))
-                    query = query.order_by(Transaction.date.desc()).limit(500)
-                    transactions = session.exec(query).all()
-                    categories = {c.id: c.name for c in session.exec(select(Category)).all()}
-                term = (search_input.value or "").strip().lower()
-                if term:
-                    transactions = [
-                        t for t in transactions
-                        if term in (t.merchant or "").lower() or term in (t.notes or "").lower()
-                    ]
-                return transactions, categories
+        # --- toolbar: search, Filters, and chips for whatever is active ---
+        with ui.element("div").classes("b-toolbar"):
+            search_input = ui.input(placeholder="Search merchant or notes").props(
+                "dense outlined clearable debounce=300").classes("b-field")
+            with search_input.add_slot("prepend"):
+                ui.icon("search").classes("text-lg").style(f"color:{TEXT_DIM}")
+            with ui.button("Filters", icon="tune").props("flat no-caps").classes("b-tool-btn") as filters_btn:
+                with ui.menu().props('anchor="bottom right" self="top right"'):
+                    with ui.column().classes("b-filters"):
+                        category_filter = ui.select(filter_category_options, value=None,
+                                                    label="Category").classes("w-full")
+                        with ui.row().classes("w-full gap-2 no-wrap"):
+                            from_input = date_field("From")
+                            to_input = date_field("To")
+                        with ui.row().classes("w-full justify-between items-center"):
+                            ui.button("Clear all", icon="close", on_click=lambda: clear_filters()).props(
+                                "flat dense no-caps")
+                            ui.button("Export CSV", icon="download",
+                                      on_click=lambda: export_transactions()).props(
+                                "outline dense no-caps color=primary")
+        with ui.element("div").classes("b-chips"):
+            chips = ui.element("div").classes("b-chips")
+            result_summary = ui.label().classes("b-count")
 
-            # Render only a capped number of rows at once -- drawing every one of
-            # up to 500 transactions builds thousands of DOM nodes and is slow on
-            # mobile. "Show more" reveals the rest in chunks.
-            _DISPLAY = {"limit": 60}
+        undo_container = ui.column().classes("w-full")
+        list_container = ui.column().classes("w-full gap-0")
 
-            def render_list():
-                list_container.clear()
-                transactions, categories = query_filtered()
-                filters_active = bool(
-                    (search_input.value or "").strip() or category_filter.value is not None
-                    or from_input.value or to_input.value
-                )
-                if transactions:
-                    total = sum(t.amount for t in transactions)
-                    result_summary.set_text(f"{len(transactions)} transaction(s) · {CUR}{total:,.2f} total")
+    def query_filtered():
+        """Returns (transactions, categories_by_id) applying the active filters."""
+        with Session(engine) as session:
+            query = select(Transaction)
+            if category_filter.value is not None:
+                query = query.where(Transaction.category_id == category_filter.value)
+            if from_input.value:
+                query = query.where(Transaction.date >= date.fromisoformat(from_input.value))
+            if to_input.value:
+                query = query.where(Transaction.date <= date.fromisoformat(to_input.value))
+            query = query.order_by(Transaction.date.desc()).limit(500)
+            transactions = session.exec(query).all()
+            categories = {c.id: c.name for c in session.exec(select(Category)).all()}
+        term = (search_input.value or "").strip().lower()
+        if term:
+            transactions = [
+                t for t in transactions
+                if term in (t.merchant or "").lower() or term in (t.notes or "").lower()
+            ]
+        return transactions, categories
+
+    def render_chips():
+        """One chip per active filter; tapping a chip removes that filter."""
+        chips.clear()
+        active = []
+        if category_filter.value is not None:
+            active.append((category_names.get(category_filter.value, "Category"),
+                           lambda: setattr(category_filter, "value", None)))
+        if from_input.value:
+            active.append((f"From {from_input.value}", lambda: setattr(from_input, "value", "")))
+        if to_input.value:
+            active.append((f"To {to_input.value}", lambda: setattr(to_input, "value", "")))
+        with chips:
+            for label, clear in active:
+                with ui.element("div").classes("b-chip").on("click", clear):
+                    ui.label(label)
+                    ui.icon("close")
+        filters_btn.classes(add="on") if active else filters_btn.classes(remove="on")
+
+    # Render only a capped number of rows at once -- drawing every one of
+    # up to 500 transactions builds thousands of DOM nodes and is slow on
+    # mobile. "Show more" reveals the rest in chunks.
+    _DISPLAY = {"limit": 60}
+
+    def render_list():
+        list_container.clear()
+        render_chips()
+        transactions, categories = query_filtered()
+        filters_active = bool(
+            (search_input.value or "").strip() or category_filter.value is not None
+            or from_input.value or to_input.value
+        )
+        if transactions:
+            total = sum(t.amount for t in transactions)
+            result_summary.set_text(f"{len(transactions)} transaction{'s' * (len(transactions) != 1)}"
+                                    f" · {CUR}{total:,.2f}")
+        else:
+            result_summary.set_text("")
+        shown = transactions[:_DISPLAY["limit"]]
+        with list_container:
+            if not transactions:
+                if filters_active:
+                    empty_state("No transactions match these filters.", "search_off")
                 else:
-                    result_summary.set_text("")
-                shown = transactions[:_DISPLAY["limit"]]
-                with list_container:
-                    if not transactions:
-                        if filters_active:
-                            empty_state("No transactions match these filters.", "search_off")
-                        else:
-                            empty_state("No transactions yet -- swipe right or tap \"Add\" to log your first one.", "receipt_long")
-                    for group_date, day_transactions in group_by_date(shown):
-                        day_total = sum(t.amount for t in day_transactions)
-                        with ui.row().classes("w-full items-baseline justify-between mt-3 mb-1 px-1"):
-                            ui.label(format_date_header(group_date)).classes("text-xs font-semibold uppercase tracking-wide").style(f"color:{TEXT_DIM}")
-                            ui.label(f"{CUR}{day_total:,.2f}").classes("text-xs font-semibold").style(f"color:{TEXT_DIM}")
-                        with ui.column().classes(LIST_GROUP):
-                            for idx, t in enumerate(day_transactions):
-                                if idx:
-                                    ui.element("div").classes("h-px w-full").style(f"background:{BORDER}")
-                                icon = PAYMENT_ICONS.get(t.payment_method, "receipt_long")
-                                with ui.row().classes("w-full items-center justify-between gap-3 px-3 py-2.5"):
-                                    with ui.row().classes("items-center gap-3 min-w-0"):
-                                        ui.icon(icon).classes("text-xl shrink-0").style(f"color:{TEXT_DIM}")
-                                        with ui.column().classes("gap-0 min-w-0"):
-                                            ui.label(t.merchant or "Unnamed").classes("font-medium truncate")
-                                            sub = categories.get(t.category_id, "Uncategorized")
-                                            if t.tag:
-                                                sub += f" · {t.tag}"
-                                            ui.label(sub).classes("text-xs truncate").style(f"color:{TEXT_DIM}")
-                                    with ui.row().classes("items-center gap-1 shrink-0"):
-                                        ui.label(f"{CUR}{t.amount:,.2f}").classes("font-semibold")
-                                        if t.receipt_image_path:
-                                            ui.button(icon="receipt", on_click=lambda _, p=t.receipt_image_path: view_receipt_photo(p)).props("flat round dense size=sm").tooltip("View attached photo")
-                                        ui.button(icon="edit", on_click=lambda _, tid=t.id: open_edit_transaction(tid)).props("flat round dense size=sm").tooltip("Edit")
-                                        ui.button(icon="delete", on_click=lambda _, tid=t.id: delete_transaction(tid)).props("flat round dense color=red size=sm")
-                    remaining = len(transactions) - len(shown)
-                    if remaining > 0:
-                        def _more():
-                            _DISPLAY["limit"] += 100
-                            render_list()
-                        ui.button(f"Show more ({remaining} remaining)", icon="expand_more", on_click=_more).props(
-                            "flat no-caps color=primary").classes("self-center mt-2")
+                    empty_state("No transactions yet -- tap + to add your first one.", "receipt_long")
+            for group_date, day_transactions in group_by_date(shown):
+                day_total = sum(t.amount for t in day_transactions)
+                with ui.element("div").classes("b-day"):
+                    ui.label(format_date_header(group_date))
+                    ui.label(f"{CUR}{day_total:,.2f}")
+                with ui.column().classes(LIST_GROUP):
+                    for t in day_transactions:
+                        name = categories.get(t.category_id)
+                        icon, color = category_style(name)
+                        sub = name or "Uncategorized"
+                        if t.tag:
+                            sub += f" · {t.tag}"
+                        if t.receipt_image_path:
+                            sub += " · receipt"
+                        list_row(icon, color, t.merchant or "Unnamed", sub, f"{CUR}{t.amount:,.2f}",
+                                 lambda _, tid=t.id: open_edit_transaction(tid))
+            remaining = len(transactions) - len(shown)
+            if remaining > 0:
+                def _more():
+                    _DISPLAY["limit"] += 100
+                    render_list()
+                ui.button(f"Show more ({remaining} remaining)", icon="expand_more", on_click=_more).props(
+                    "flat no-caps color=primary").classes("self-center mt-2")
 
-            def refresh():
-                _DISPLAY["limit"] = 60   # reset to the top whenever filters change
-                render_list()
+    def refresh():
+        _DISPLAY["limit"] = 60   # reset to the top whenever filters change
+        render_list()
 
-            def clear_filters():
-                search_input.value = ""
-                category_filter.value = None
-                from_input.value = ""
-                to_input.value = ""
-                refresh()
+    def clear_filters():
+        search_input.value = ""
+        category_filter.value = None
+        from_input.value = ""
+        to_input.value = ""
+        refresh()
 
-            def export_transactions():
-                transactions, categories = query_filtered()
-                if not transactions:
-                    ui.notify("Nothing to export with the current filters.", type="warning")
-                    return
-                rows = [
-                    [
-                        t.date.isoformat(), t.merchant or "", f"{t.amount:.2f}",
-                        categories.get(t.category_id, "Uncategorized"),
-                        t.payment_method or "", t.tag or "", t.notes or "",
-                    ]
-                    for t in transactions
-                ]
-                download_csv(
-                    ["Date", "Merchant", "Amount", "Category", "Payment method", "Tag", "Notes"],
-                    rows, f"transactions-{date.today().isoformat()}.csv",
-                )
+    def export_transactions():
+        transactions, categories = query_filtered()
+        if not transactions:
+            ui.notify("Nothing to export with the current filters.", type="warning")
+            return
+        rows = [
+            [
+                t.date.isoformat(), t.merchant or "", f"{t.amount:.2f}",
+                categories.get(t.category_id, "Uncategorized"),
+                t.payment_method or "", t.tag or "", t.notes or "",
+            ]
+            for t in transactions
+        ]
+        download_csv(
+            ["Date", "Merchant", "Amount", "Category", "Payment method", "Tag", "Notes"],
+            rows, f"transactions-{date.today().isoformat()}.csv",
+        )
 
-            search_input.on_value_change(lambda e: refresh())
-            category_filter.on_value_change(lambda e: refresh())
-            from_input.on_value_change(lambda e: refresh())
-            to_input.on_value_change(lambda e: refresh())
+    search_input.on_value_change(lambda e: refresh())
+    category_filter.on_value_change(lambda e: refresh())
+    from_input.on_value_change(lambda e: refresh())
+    to_input.on_value_change(lambda e: refresh())
 
-            def view_receipt_photo(path):
-                with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] p-2"):
-                    ui.image(f"/receipt-images/{path}").classes("max-w-full")
-                    ui.button("Close", on_click=dialog.close).props("flat dense no-caps").classes("mt-2")
-                dialog.open()
+    def view_receipt_photo(path):
+        with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] p-2"):
+            ui.image(f"/receipt-images/{path}").classes("max-w-full")
+            ui.button("Close", on_click=dialog.close).props("flat dense no-caps").classes("mt-2")
+        dialog.open()
 
-            def open_edit_transaction(tid):
-                with Session(engine) as session:
-                    t = session.get(Transaction, tid)
-                    if not t:
-                        return
-                    cats = session.exec(select(Category)).all()
-                    cat_opts = {c.id: _category_label(c, cats) for c in cats}
-                    current = dict(date=t.date.isoformat(), merchant=t.merchant or "", amount=t.amount,
-                                   category_id=t.category_id, payment=t.payment_method or "Card",
-                                   tag=t.tag or "", notes=t.notes or "")
+    def open_edit_transaction(tid):
+        """The whole entry: edit it, see its receipt, or delete it."""
+        with Session(engine) as session:
+            t = session.get(Transaction, tid)
+            if not t:
+                return
+            cats = session.exec(select(Category)).all()
+            cat_opts = {c.id: _category_label(c, cats) for c in cats}
+            current = dict(date=t.date.isoformat(), merchant=t.merchant or "", amount=t.amount,
+                           category_id=t.category_id, payment=t.payment_method or "Card",
+                           tag=t.tag or "", notes=t.notes or "", receipt=t.receipt_image_path)
 
-                with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
-                    section_header("Edit transaction", icon="edit", icon_color=AMBER)
-                    e_date = date_field("Date", value=current["date"])
-                    e_merchant = ui.input(label="Merchant", value=current["merchant"]).classes("w-full")
-                    e_amount = ui.number(label="Amount", value=current["amount"], format="%.2f").props(
-                        f'prefix="{CUR}" input-class="text-xl font-bold"'
-                    ).classes("w-full")
-                    e_category = ui.select(cat_opts, value=current["category_id"], label="Category").classes("w-full")
-                    e_payment = segmented("Payment method",
-                                          {"Card": "Card", "Cash": "Cash", "Bank Transfer": "Transfer", "Other": "Other"},
-                                          current["payment"] if current["payment"] in ("Card", "Cash", "Bank Transfer", "Other") else "Card")
-                    e_tag = ui.select(TAG_OPTIONS, value=current["tag"], label="Tag (context)").classes("w-full")
-                    e_notes = ui.textarea(label="Notes", value=current["notes"]).classes("w-full")
+        with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
+            section_header("Transaction", icon="edit", icon_color=AMBER)
+            e_date = date_field("Date", value=current["date"])
+            e_merchant = ui.input(label="Merchant", value=current["merchant"]).classes("w-full")
+            e_amount = ui.number(label="Amount", value=current["amount"], format="%.2f").props(
+                f'prefix="{CUR}" input-class="text-xl font-bold"'
+            ).classes("w-full")
+            e_category = ui.select(cat_opts, value=current["category_id"], label="Category").classes("w-full")
+            e_payment = segmented("Payment method",
+                                  {"Card": "Card", "Cash": "Cash", "Bank Transfer": "Transfer", "Other": "Other"},
+                                  current["payment"] if current["payment"] in ("Card", "Cash", "Bank Transfer", "Other") else "Card")
+            e_tag = ui.select(TAG_OPTIONS, value=current["tag"], label="Tag (context)").classes("w-full")
+            e_notes = ui.textarea(label="Notes", value=current["notes"]).classes("w-full")
+            if current["receipt"]:
+                ui.button("View receipt photo", icon="receipt",
+                          on_click=lambda: view_receipt_photo(current["receipt"])).props(
+                    "flat dense no-caps color=primary").classes("self-start")
 
-                    def save_edit():
-                        with Session(engine) as session:
-                            obj = session.get(Transaction, tid)
-                            if obj:
-                                obj.date = date.fromisoformat(e_date.value)
-                                obj.merchant = e_merchant.value or None
-                                obj.amount = e_amount.value or 0
-                                obj.category_id = e_category.value
-                                obj.payment_method = e_payment.value
-                                obj.tag = e_tag.value or None
-                                obj.notes = e_notes.value or None
-                                session.add(obj)
-                                session.commit()
-                        dialog.close()
-                        ui.notify("Transaction updated.", type="positive")
-                        refresh()
-
-                    with ui.row().classes("w-full justify-end gap-2 mt-2"):
-                        ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
-                        ui.button("Save", on_click=save_edit).props("color=primary unelevated no-caps")
-                dialog.open()
-
-            def delete_transaction(tid):
-                # Snapshot the row's values before deleting so the toast can
-                # offer a real undo. The receipt file is deliberately left on
-                # disk until undo expires -- deleting it eagerly would make the
-                # restore lossy.
+            def save_edit():
                 with Session(engine) as session:
                     obj = session.get(Transaction, tid)
-                    if not obj:
-                        return
-                    snapshot = {
-                        "date": obj.date, "amount": obj.amount, "merchant": obj.merchant,
-                        "category_id": obj.category_id, "payment_method": obj.payment_method,
-                        "notes": obj.notes, "tag": obj.tag,
-                        "receipt_image_path": obj.receipt_image_path,
-                        "is_subscription_payment": obj.is_subscription_payment,
-                    }
-                    session.delete(obj)
-                    session.commit()
-
-                def undo_delete():
-                    with Session(engine) as session:
-                        session.add(Transaction(**snapshot))
+                    if obj:
+                        obj.date = date.fromisoformat(e_date.value)
+                        obj.merchant = e_merchant.value or None
+                        obj.amount = e_amount.value or 0
+                        obj.category_id = e_category.value
+                        obj.payment_method = e_payment.value
+                        obj.tag = e_tag.value or None
+                        obj.notes = e_notes.value or None
+                        session.add(obj)
                         session.commit()
-                    ui.notify("Restored.", type="positive")
-                    refresh()
+                dialog.close()
+                ui.notify("Transaction updated.", type="positive")
+                refresh_all()
 
-                refresh()
-                undo_banner(undo_container, f"Deleted {snapshot['merchant'] or 'transaction'}.", undo_delete)
+            def delete_it():
+                dialog.close()
+                delete_transaction(tid)
 
-            refresh()
+            with ui.row().classes("w-full items-center gap-2 mt-2"):
+                ui.button("Delete", icon="delete_outline", on_click=delete_it).props(
+                    "flat no-caps color=negative")
+                ui.space()
+                ui.button("Cancel", on_click=dialog.close).props("flat no-caps")
+                ui.button("Save", on_click=save_edit).props("color=primary unelevated no-caps")
+        dialog.open()
 
-        with ui.tab_panel(summary_tab).classes("p-0 min-h-[70vh]"):
-            with ui.column().classes("w-full gap-3 pt-4"):
-                with card_box().classes("w-full"):
-                    period_select = ui.select(
-                        {"weekly": "Week", "monthly": "Month", "6month": "6 Months", "yearly": "Year", "2year": "2 Years", "all_time": "All time"},
-                        value="monthly", label="Period",
-                    ).props("dense options-dense").classes("w-40")
-                trend_container = ui.column().classes(CARD)
-                summary_container = ui.column().classes(CARD)
+    def delete_transaction(tid):
+        # Snapshot the row's values before deleting so the toast can
+        # offer a real undo. The receipt file is deliberately left on
+        # disk until undo expires -- deleting it eagerly would make the
+        # restore lossy.
+        with Session(engine) as session:
+            obj = session.get(Transaction, tid)
+            if not obj:
+                return
+            snapshot = {
+                "date": obj.date, "amount": obj.amount, "merchant": obj.merchant,
+                "category_id": obj.category_id, "payment_method": obj.payment_method,
+                "notes": obj.notes, "tag": obj.tag,
+                "receipt_image_path": obj.receipt_image_path,
+                "is_subscription_payment": obj.is_subscription_payment,
+            }
+            session.delete(obj)
+            session.commit()
 
-                def refresh_summary():
-                    render_amount_trend(trend_container, Transaction, Transaction.date, "Spending trend",
-                                        "show_chart", AMBER, period_select.value, date.today(),
-                                        empty_hint="No spending recorded in this period.")
-                    render_expenses(summary_container, period_select.value, date.today())
+        def undo_delete():
+            with Session(engine) as session:
+                session.add(Transaction(**snapshot))
+                session.commit()
+            ui.notify("Restored.", type="positive")
+            refresh_all()
 
-                period_select.on_value_change(lambda e: refresh_summary())
-                refresh_summary()
+        refresh_all()
+        undo_banner(undo_container, f"Deleted {snapshot['merchant'] or 'transaction'}.", undo_delete)
 
-        with ui.tab_panel(add_tab).classes("p-0 min-h-[70vh]"):
-            def on_saved():
-                refresh()
-                tabs.set_value(log_tab)
+    def refresh_all():
+        figures.refresh()
+        refresh()
 
-            with ui.column().classes("w-full items-center pt-4"):
-                render_add_transaction_form(on_saved=on_saved)
+    refresh()
+    # Adding from the + sheet redraws the figures and the list in place.
+    set_page_refresh(refresh_all)
+
+    with summary_view:
+        with card_box().classes("w-full"):
+            period_select = ui.select(
+                {"weekly": "Week", "monthly": "Month", "6month": "6 Months", "yearly": "Year", "2year": "2 Years", "all_time": "All time"},
+                value="monthly", label="Period",
+            ).props("dense options-dense").classes("w-40")
+        trend_container = ui.column().classes(CARD)
+        summary_container = ui.column().classes(CARD)
+
+        def refresh_summary():
+            render_amount_trend(trend_container, Transaction, Transaction.date, "Spending trend",
+                                "show_chart", AMBER, period_select.value, date.today(),
+                                empty_hint="No spending recorded in this period.")
+            render_expenses(summary_container, period_select.value, date.today())
+
+        period_select.on_value_change(lambda e: refresh_summary())
+        refresh_summary()

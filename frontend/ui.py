@@ -12,7 +12,7 @@ Importing this module registers the @ui.page routes (run.py does so).
 
 from nicegui import app, ui
 
-from .common import NAV_ITEMS, load_app_settings
+from .common import NAV_ITEMS, load_app_settings, set_page_refresh
 from .pages.accounts import accounts_page
 from .pages.dashboard import dashboard
 from .pages.food import add_food_page, food_log_page
@@ -61,9 +61,21 @@ ROUTES = {
 # typing its URL. Built from the nav registry, plus /add-income (Income module).
 ROUTE_MODULE = {route: mod for _, route, _, mod in NAV_ITEMS if mod}
 ROUTE_MODULE["/add-income"] = "income"
+def _fresh_page(page_fn):
+    """Each page starts with no refresh hook, so quick-add never calls into
+    the page that was on screen before this one."""
+    def wrapped():
+        set_page_refresh(None)
+        return page_fn()
+    return wrapped
+
+
 for _route, _mod in ROUTE_MODULE.items():
     if _route in ROUTES:
         ROUTES[_route] = _module_guard(ROUTES[_route], _mod)
+
+
+ROUTES = {route: _fresh_page(fn) for route, fn in ROUTES.items()}
 
 
 @ui.page("/")

@@ -1,4 +1,5 @@
 """Reusable UI pieces: cards, headers, badges, gauges, meters."""
+from contextlib import contextmanager
 from datetime import date
 
 from nicegui import ui
@@ -63,20 +64,20 @@ def page_header(title: str, subtitle: str = None, icon: str = None):
 
 
 def summary_strip(stats, width_class: str = ""):
-    """Unboxed headline figures sitting directly on the page (colour dot + small
-    label + bold value), the airy top-of-page read introduced on Profile.
-    `stats` is a list of (label, value, colour) tuples; falsy rows are skipped
-    so callers can conditionally include figures inline."""
+    """A page's headline figures: big numbers under small labels, divided by
+    hairlines -- the same figures as Cadence's Stats page. `stats` is a list of
+    (label, value, colour) tuples (the colour marks the label); falsy rows are
+    skipped so callers can include figures conditionally."""
     stats = [s for s in stats if s]
     if not stats:
         return
-    with ui.row().classes(f"w-full {width_class} items-center gap-x-8 gap-y-3 flex-wrap mb-3 mt-1"):
+    with ui.element("div").classes(f"b-figs {width_class}"):
         for lbl, val, col in stats:
-            with ui.row().classes("items-center gap-2"):
-                ui.element("div").classes("rounded-full shrink-0").style(f"width:9px;height:9px;background:{col}")
-                with ui.column().classes("gap-0"):
-                    ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
-                    ui.label(str(val)).classes("text-lg font-bold leading-tight")
+            with ui.element("div").classes("b-fig"):
+                with ui.element("div").classes("b-fig-label"):
+                    ui.element("span").classes("dot").style(f"background:{col}")
+                    ui.label(lbl)
+                ui.label(str(val)).classes("b-fig-num")
 
 
 def date_field(label_text: str = None, value=None):
@@ -376,3 +377,55 @@ def render_expiry_badge(exp_date):
         return
     label, color = meta
     badge(label, color)
+
+
+@contextmanager
+def form_frame(title: str, icon: str, color: str, compact: bool = False):
+    """The frame around an add form: a card with a heading on its own page, or
+    nothing at all inside the quick-add sheet (which has its own heading)."""
+    if compact:
+        with ui.column().classes("w-full gap-3"):
+            yield
+    else:
+        with card_box().classes("w-full max-w-xl"):
+            section_header(title, icon=icon, icon_color=color)
+            yield
+
+
+def pill_toggle(options: dict, value, on_change):
+    """A row of pill buttons, one active -- the Ensemble tab / filter control.
+    Returns a setter so the caller can change the selection itself."""
+    state = {"value": value}
+    pills = {}
+    with ui.element("div").classes("b-pills"):
+        for key, label in options.items():
+            el = ui.element("div").classes("b-pill" + (" active" if key == value else ""))
+            with el:
+                ui.label(label)
+            pills[key] = el
+
+    def select(key, notify=True):
+        state["value"] = key
+        for k, el in pills.items():
+            el.classes(add="active") if k == key else el.classes(remove="active")
+        if notify:
+            on_change(key)
+
+    for key, el in pills.items():
+        el.on("click", lambda k=key: select(k))
+    return select
+
+
+def list_row(icon: str, color: str, title: str, subtitle: str, value: str, on_click,
+             tooltip: str = "Open"):
+    """One entry in a day's list: a tinted icon, the name and details, the
+    amount on the right. The whole row opens the entry -- editing, deleting and
+    anything else live there, not as a strip of icons on every row."""
+    with ui.element("div").classes("b-row").on("click", on_click).tooltip(tooltip):
+        with ui.element("div").classes("b-row-icon").style(
+                f"background:{alpha(color, '22')}; color:{color}"):
+            ui.icon(icon)
+        with ui.element("div").classes("b-row-text"):
+            ui.label(title).classes("b-row-title")
+            ui.label(subtitle).classes("b-row-sub")
+        ui.label(value).classes("b-row-value")

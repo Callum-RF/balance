@@ -14,11 +14,14 @@ from backend.modules import MODULES
 
 from . import theme as _theme
 from .common import (
+    MEAL_ICONS,
     NAV_ITEMS,
     load_app_settings,
     load_enabled_modules,
     module_enabled,
+    refresh_page,
 )
+from .components import pill_toggle
 from .theme import (
     _TOKEN_KEYS,
     BG,
@@ -314,6 +317,96 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   color: var(--b-indigo); }
 @media (max-width: 640px) { .b-title { font-size: 30px; } }
 
+/* Headline figures (summary_strip), as on Cadence's Stats page. */
+.b-figs { display: grid; width: 100%; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 2px 0 6px; }
+.b-fig { padding: 4px 20px 4px 0; min-width: 0; }
+.b-fig + .b-fig { padding-left: 20px; border-left: 1px solid var(--b-border); }
+.b-fig-label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+  color: var(--b-text-dim); }
+.b-fig-label .dot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+.b-fig-num { font-size: 30px; font-weight: 800; letter-spacing: -.03em; line-height: 1.15;
+  color: var(--b-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px) {
+  .b-figs { grid-template-columns: 1fr 1fr; row-gap: 12px; }
+  .b-fig, .b-fig + .b-fig { padding: 2px 0; border-left: 0; }
+  .b-fig-num { font-size: 24px; }
+}
+
+/* Pills: tabs and quick filters. */
+.b-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.b-pill { height: 34px; padding: 0 15px; border-radius: 999px; display: inline-flex;
+  align-items: center; font-size: 13px; font-weight: 650; cursor: pointer; user-select: none;
+  color: var(--b-text-dim); background: var(--b-surface); border: 1px solid var(--b-border);
+  transition: background .15s, color .15s, border-color .15s; white-space: nowrap; }
+.b-pill:hover { color: var(--b-text); border-color: var(--b-indigo); }
+.b-pill.active { background: var(--q-primary); border-color: var(--q-primary); color: #fff; }
+
+/* List toolbar: a pill search, a Filters button, active-filter chips. */
+.b-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%; }
+.b-field { flex: 1 1 220px; }
+.b-field .q-field__control { height: 40px !important; min-height: 40px !important;
+  border-radius: 999px !important; background: var(--b-surface) !important; padding: 0 14px !important; }
+.b-field .q-field__control:before { border-radius: 999px !important; }
+.b-field .q-field__marginal { height: 40px; }
+.b-tool-btn.q-btn { height: 40px; border-radius: 999px !important; padding: 0 16px;
+  background: var(--b-surface) !important; border: 1px solid var(--b-border);
+  color: var(--b-text-dim) !important; font-weight: 650; }
+.b-tool-btn.on.q-btn { border-color: var(--b-indigo); color: var(--b-indigo) !important;
+  background: color-mix(in srgb, var(--b-indigo) 12%, transparent) !important; }
+.b-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.b-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px 0 11px;
+  border-radius: 999px; font-size: 12.5px; font-weight: 650; cursor: pointer;
+  background: color-mix(in srgb, var(--b-indigo) 14%, transparent); color: var(--b-indigo); }
+.b-chip .q-icon { font-size: 15px; }
+.b-count { font-size: 12.5px; color: var(--b-text-dim); }
+.b-filters { width: min(360px, 92vw); padding: 14px !important; gap: 10px; }
+/* On a phone the Filters button is just its icon, so it sits beside the search. */
+@media (max-width: 640px) {
+  .b-field { flex-basis: 0; }
+  .b-tool-btn.q-btn { padding: 0 11px; }
+  .b-tool-btn .block { display: none; }
+}
+
+/* List rows: the whole row opens the entry. */
+.b-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px;
+  cursor: pointer; transition: background .12s; }
+.b-row:hover { background: var(--b-surface-2); }
+.b-row + .b-row { border-top: 1px solid var(--b-border); }
+.b-row-icon { width: 38px; height: 38px; border-radius: 12px; flex: none; display: flex;
+  align-items: center; justify-content: center; }
+.b-row-icon .q-icon { font-size: 20px; }
+.b-row-text { flex: 1; min-width: 0; }
+.b-row-title { font-weight: 650; font-size: 14.5px; color: var(--b-text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.b-row-sub { font-size: 12.5px; color: var(--b-text-dim); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.b-row-value { font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums;
+  white-space: nowrap; color: var(--b-text); }
+.b-day { display: flex; align-items: baseline; justify-content: space-between; width: 100%;
+  margin: 16px 2px 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--b-text-dim); }
+
+/* Quick-add sheet */
+.b-addsheet { width: min(560px, 100vw); max-width: 100vw !important; max-height: 88vh;
+  border-radius: 22px 22px 0 0 !important; padding: 0 !important; overflow: hidden;
+  display: flex; flex-direction: column; background: var(--b-bg) !important; }
+.b-addsheet-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px 18px;
+  border-bottom: 1px solid var(--b-border); background: var(--b-surface); }
+.b-addsheet-title { font-size: 18px; font-weight: 800; letter-spacing: -.01em; margin-right: 4px; }
+.b-addsheet-body { overflow-y: auto; padding: 16px 18px calc(22px + env(safe-area-inset-bottom)); }
+.b-grab { width: 38px; height: 4px; border-radius: 999px; background: var(--b-border);
+  margin: 8px auto 0; }
+.b-recent { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px;
+  scrollbar-width: none; }
+.b-recent::-webkit-scrollbar { display: none; }
+.b-recent-chip { flex: none; display: flex; align-items: center; gap: 8px; padding: 7px 12px 7px 9px;
+  border-radius: 14px; background: var(--b-surface); border: 1px solid var(--b-border);
+  cursor: pointer; }
+.b-recent-chip:hover { border-color: var(--b-indigo); }
+.b-recent-chip .n { font-size: 13px; font-weight: 650; color: var(--b-text); white-space: nowrap; }
+.b-recent-chip .k { font-size: 11.5px; color: var(--b-text-dim); }
+
 /* Command palette */
 .b-palette { width: min(600px, 92vw); max-width: none !important; padding: 0 !important;
   gap: 0 !important; margin-top: 11vh; align-self: flex-start; overflow: hidden;
@@ -397,7 +490,74 @@ def _more_sections(enabled):
     return sections
 
 
-def command_palette(toggle_theme, enabled):
+_ADD_KINDS = {"expense": "Expense", "food": "Food", "income": "Income"}
+_ADDED = {"expense": "Expense added", "food": "Food logged", "income": "Income added"}
+
+
+def quick_add_sheet(enabled):
+    """The + button's sheet: add an expense, a meal or income without leaving
+    the page. Rises from the bottom on a phone. Saving closes it and refreshes
+    the page underneath (see common.refresh_page). Returns open_sheet(kind)."""
+    from .pages.food import recent_foods, relog_food, render_add_food_form
+    from .pages.income import render_add_income_form
+    from .pages.transactions import render_add_transaction_form
+
+    kinds = {k: v for k, v in _ADD_KINDS.items() if k != "income" or module_enabled("income", enabled)}
+    state = {"kind": "expense"}
+
+    with ui.dialog().props("position=bottom") as dlg, ui.card().classes("b-addsheet"):
+        with ui.element("div").classes("b-addsheet-head w-full"):
+            ui.label("Add").classes("b-addsheet-title")
+            select = pill_toggle(kinds, "expense", lambda k: show(k))
+            ui.space()
+            ui.button(icon="close", on_click=dlg.close).props("flat round dense").classes(
+                "b-icon-btn").tooltip("Close")
+        body = ui.element("div").classes("b-addsheet-body w-full")
+
+    def saved():
+        dlg.close()
+        ui.notify(_ADDED[state["kind"]], type="positive")
+        refresh_page()
+
+    def one_tap(fid):
+        name = relog_food(fid)
+        dlg.close()
+        ui.notify(f"Logged {name} for today", type="positive")
+        refresh_page()
+
+    def show(kind):
+        state["kind"] = kind
+        body.clear()
+        with body:
+            if kind == "food":
+                favourites = recent_foods()
+                if favourites:
+                    ui.label("Again today? Tap to log").classes("b-count")
+                    with ui.element("div").classes("b-recent"):
+                        for f in favourites:
+                            icon, color = MEAL_ICONS.get(f.meal_type, ("restaurant", TEXT_DIM))
+                            with ui.element("div").classes("b-recent-chip").on(
+                                    "click", lambda fid=f.id: one_tap(fid)):
+                                ui.icon(icon).style(f"color:{color}")
+                                with ui.column().classes("gap-0"):
+                                    ui.label(f.food_name).classes("n")
+                                    ui.label(f"{f.calories or 0:,.0f} kcal").classes("k")
+                render_add_food_form(on_saved=saved, compact=True)
+            elif kind == "income":
+                render_add_income_form(on_saved=saved, compact=True)
+            else:
+                render_add_transaction_form(on_saved=saved, compact=True)
+
+    def open_sheet(kind="expense"):
+        kind = kind if kind in kinds else "expense"
+        select(kind, notify=False)
+        show(kind)
+        dlg.open()
+
+    return open_sheet
+
+
+def command_palette(toggle_theme, enabled, open_sheet):
     """Jump to any page or quick action by typing. Arrow keys move, Enter
     opens, Esc closes."""
     state = {"items": [], "sel": 0}
@@ -413,8 +573,9 @@ def command_palette(toggle_theme, enabled):
             ui.label("Enter to open")
             ui.label("Esc to close")
 
+    add_kinds = {"/add-transaction": "expense", "/add-food": "food", "/add-income": "income"}
     everything = (
-        [("Add", label, icon, route) for label, route, icon in _quick_add_items(enabled)]
+        [("Add", label, icon, add_kinds[route]) for label, route, icon in _quick_add_items(enabled)]
         + [("Go to", label, icon, route) for label, route, icon, mod in NAV_ITEMS
            if module_enabled(mod, enabled)]
         + [("Actions", "Switch light / dark", "brightness_6", None)]
@@ -455,6 +616,8 @@ def command_palette(toggle_theme, enabled):
         dlg.close()
         if route is None:
             toggle_theme()
+        elif not route.startswith("/"):
+            open_sheet(route)          # an Add item: the sheet, not a page
         else:
             ui.navigate.to(route)
 
@@ -490,7 +653,8 @@ def shell():
             session.add(row)
             session.commit()
 
-    open_palette = command_palette(toggle_theme, enabled)
+    open_sheet = quick_add_sheet(enabled)
+    open_palette = command_palette(toggle_theme, enabled, open_sheet)
 
     with ui.element("header").classes("b-topbar"):
         with ui.element("div").classes("b-topbar-in"):
@@ -509,15 +673,8 @@ def shell():
             with ui.link(target=route).classes("b-dock-item").tooltip(label):
                 ui.icon(icon)
                 ui.label(label).classes("b-dock-label")
-        with ui.button(icon="add").props("round unelevated color=primary").classes(
-                "b-dock-add").tooltip("Add"):
-            with ui.menu().props('anchor="top middle" self="bottom middle"').classes("b-sheet"):
-                ui.label("Add").classes("b-sheet-label")
-                for label, route, icon in _quick_add_items(enabled):
-                    with ui.menu_item(on_click=lambda r=route: ui.navigate.to(r)):
-                        with ui.row().classes("items-center gap-3 no-wrap"):
-                            ui.icon(icon)
-                            ui.label(label)
+        ui.button(icon="add", on_click=lambda: open_sheet("expense")).props(
+            "round unelevated color=primary").classes("b-dock-add").tooltip("Add")
         for label, route, icon in DOCK[2:]:
             with ui.link(target=route).classes("b-dock-item").tooltip(label):
                 ui.icon(icon)

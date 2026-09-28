@@ -16,24 +16,26 @@ from ..common import (
     NON_SUBSCRIPTION_CATEGORIES,
     _category_label,
     detect_recurring_transactions,
-    format_date_header,
 )
 from ..components import (
-    badge,
     card_box,
+    card_box_accent,
     date_field,
     empty_state,
+    list_row,
     page_header,
     section_header,
     segmented,
     summary_strip,
+    undo_banner,
 )
 from ..theme import (
     AMBER,
+    BORDER,
     EMERALD,
     INDIGO,
-    SURFACE_2,
-    TEXT,
+    LIST_GROUP,
+    SURFACE,
     TEXT_DIM,
 )
 
@@ -42,7 +44,8 @@ from ..theme import (
 # Subscriptions
 # ---------------------------------------------------------------------------
 def subscriptions_page():
-    page_header("Subscriptions", "Recurring spend and what's due next.", icon="autorenew")
+    page_header("Subscriptions", "Recurring spend and what's due next.")
+    undo_container = ui.column().classes("w-full")
 
     @ui.refreshable
     def content():
@@ -125,29 +128,106 @@ def subscriptions_page():
       def delete_sub(sid):
         with Session(engine) as session:
             sub = session.get(Subscription, sid)
-            if sub:
-                session.delete(sub)
+            if not sub:
+                return
+            snapshot = sub.model_dump(exclude={"id"})
+            session.delete(sub)
+            session.commit()
+
+        def undo_delete():
+            with Session(engine) as session:
+                session.add(Subscription(**snapshot))
                 session.commit()
+            ui.notify("Restored.", type="positive")
+            content.refresh()
+
         content.refresh()
+        undo_banner(undo_container, f"Deleted {snapshot['name']}.", undo_delete)
+
+      def open_sub(sid):
+        """The whole subscription: mark a payment, pause it, edit or delete it."""
+        with Session(engine) as session:
+            sub = session.get(Subscription, sid)
+            if not sub:
+                return
+            cur = sub.model_dump()
+        is_inst = cur["total_payments"] is not None
+        done = is_inst and cur["payments_made"] >= cur["total_payments"]
+
+        with ui.dialog() as dialog, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-2 w-full max-w-md"):
+            section_header(cur["name"], subtitle=(
+                "Paid off" if done else "Paused" if not cur["active"]
+                else f"Payment {cur['payments_made'] + 1} of {cur['total_payments']}" if is_inst
+                else "Active"))
+            if cur["active"] and not done:
+                def paid():
+                    dialog.close()
+                    mark_payment_made(sid)
+                    ui.notify(f"Logged a {CUR}{cur['amount']:,.2f} payment to {cur['name']}.", type="positive")
+                ui.button("Mark a payment made today", icon="check", on_click=paid).props(
+                    "unelevated no-caps color=primary").classes("self-start")
+                ui.label("Logs it as a transaction and moves the next payment date on.").classes(
+                    "text-xs -mt-1").style(f"color:{TEXT_DIM}")
+            e_name = ui.input(label="Name", value=cur["name"]).classes("w-full")
+            e_amount = ui.number(label="Amount per payment", value=cur["amount"], format="%.2f").props(
+                f'prefix="{CUR}"').classes("w-full")
+            e_cycle = segmented("Billing cycle", {"monthly": "Monthly", "yearly": "Yearly"}, cur["billing_cycle"])
+            e_next = date_field("Next payment date",
+                                value=cur["next_payment_date"].isoformat() if cur["next_payment_date"] else "")
+            e_cat = ui.select(category_options, value=cur["category_id"], label="Category").classes("w-full")
+
+            def save():
+                with Session(engine) as session:
+                    obj = session.get(Subscription, sid)
+                    if obj:
+                        obj.name = e_name.value or obj.name
+                        obj.amount = e_amount.value or 0
+                        obj.billing_cycle = e_cycle.value
+                        obj.next_payment_date = date.fromisoformat(e_next.value) if e_next.value else None
+                        obj.category_id = e_cat.value
+                        session.add(obj)
+                        session.commit()
+                dialog.close()
+                ui.notify("Subscription updated.", type="positive")
+                content.refresh()
+
+            def toggle_active():
+                dialog.close()
+                set_sub_active(sid, not cur["active"])
+
+            def remove():
+                dialog.close()
+                delete_sub(sid)
+
+            with ui.row().classes("w-full items-center gap-1 mt-2"):
+                ui.button("Delete", icon="delete_outline", on_click=remove).props("flat no-caps color=negative")
+                if not is_inst:
+                    ui.button("Resume" if not cur["active"] else "Pause",
+                              icon="play_arrow" if not cur["active"] else "pause",
+                              on_click=toggle_active).props("flat no-caps")
+                ui.space()
+                ui.button("Save", on_click=save).props("color=primary unelevated no-caps")
+        dialog.open()
 
       if detected:
-        with card_box().classes("w-full"):
-            section_header(
-                "Possible recurring payments", icon="auto_awesome", icon_color=AMBER,
-                subtitle="Merchants you're charged by on a regular cadence but haven't set up as a subscription yet.",
-            )
-            for cand in detected:
-                cadence_word = "month" if cand["cadence"] == "monthly" else "year"
-                with card_box().classes("w-full py-3 flex-row items-center justify-between gap-3").style(f"background:{SURFACE_2}"):
-                    with ui.column().classes("gap-0"):
-                        ui.label(f"{cand['merchant']} · {CUR}{cand['typical_amount']:,.2f}/{cadence_word}").classes("font-semibold")
-                        ui.label(
-                            f"Seen {cand['count']} times · {cand['cadence']} · last {format_date_header(cand['last_seen']).lower()}"
-                        ).classes("text-xs").style(f"color:{TEXT_DIM}")
-                    ui.button(
-                        "Add as subscription", icon="add",
-                        on_click=lambda _, c=cand: add_detected_subscription(c),
-                    ).props("flat dense no-caps color=primary")
+        with card_box_accent().classes("w-full gap-1"):
+            section_header("Looks like a subscription",
+                           subtitle="Charged on a regular cadence but not tracked here yet.")
+            with ui.column().classes("w-full gap-0"):
+                for cand in detected:
+                    cadence_word = "month" if cand["cadence"] == "monthly" else "year"
+                    with ui.element("div").classes("b-nudge").on(
+                            "click", lambda c=cand: add_detected_subscription(c)):
+                        ui.element("span").classes("dot").style(f"background:{AMBER}")
+                        with ui.column().classes("b-nudge-text gap-0"):
+                            ui.label(f"{cand['merchant']} · {CUR}{cand['typical_amount']:,.2f}/{cadence_word}").classes(
+                                "font-semibold")
+                            ui.label(f"Seen {cand['count']} times · last charged "
+                                     f"{cand['last_seen'].day} {cand['last_seen']:%b}").classes(
+                                "text-xs").style(f"color:{TEXT_DIM}")
+                        with ui.element("div").classes("b-nudge-cta"):
+                            ui.label("Track")
+                            ui.icon("chevron_right")
 
       with ui.expansion("Add subscription", icon="add").classes("w-full"):
         with ui.column().classes("gap-1 max-w-xl w-full"):
@@ -192,38 +272,39 @@ def subscriptions_page():
 
       if not subs:
         with card_box().classes("w-full"):
-            empty_state("No subscriptions yet -- add one above, or check \"Possible recurring payments\" if you have regular charges.", "autorenew")
+            empty_state("No subscriptions yet -- add one above, or track one it has spotted.", "autorenew")
 
-      for s in subs:
-        is_installment = s.total_payments is not None
-        is_completed = is_installment and s.payments_made >= s.total_payments
-        row_icon = "check_circle" if is_completed else ("pause_circle" if not s.active else ("receipt_long" if is_installment else "autorenew"))
-        row_color = EMERALD if is_completed else (TEXT_DIM if not s.active else (AMBER if is_installment else INDIGO))
-        with card_box().classes("w-full py-3 flex-row items-center justify-between gap-2 no-wrap"):
-            with ui.row().classes("flex-1 items-center gap-3 min-w-0 no-wrap"):
-                ui.icon(row_icon).classes("text-2xl shrink-0").style(f"color:{row_color}")
-                with ui.column().classes("gap-0 min-w-0"):
-                    with ui.row().classes("items-center gap-2 min-w-0 no-wrap w-full"):
-                        ui.label(s.name).classes("font-semibold truncate" + ("" if s.active else " line-through")).style(
-                            f"color:{TEXT if s.active else TEXT_DIM}"
-                        )
-                        if is_completed:
-                            badge("Paid off", EMERALD)
-                        elif not s.active:
-                            badge("Paused", TEXT_DIM)
-                        elif is_installment:
-                            badge("Installment", AMBER)
-                    ui.label(f"{CUR}{s.amount:,.2f} / {s.billing_cycle}").classes("text-xs").style(f"color:{TEXT_DIM}")
-                    if is_installment:
-                        remaining = max(s.total_payments - s.payments_made, 0)
-                        ui.label(f"Payment {min(s.payments_made + 1, s.total_payments)} of {s.total_payments} · {CUR}{remaining * s.amount:,.2f} left").classes("text-xs").style(f"color:{TEXT_DIM}")
-            with ui.row().classes("items-center gap-1 shrink-0 no-wrap"):
-                if s.active and not is_completed:
-                    ui.button("Mark paid", icon="check", on_click=lambda _, sid=s.id: mark_payment_made(sid)).props("flat dense no-caps color=primary")
-                if not is_installment:
-                    ui.switch(value=s.active, on_change=lambda e, sid=s.id: set_sub_active(sid, e.value)).props(
-                        "color=primary dense"
-                    ).tooltip("Active / Paused")
-                ui.button(icon="delete", on_click=lambda _, sid=s.id: delete_sub(sid)).props("flat round dense color=red")
+      def sub_row(sub):
+        is_inst = sub.total_payments is not None
+        done = is_inst and sub.payments_made >= sub.total_payments
+        icon, color = (("check_circle", EMERALD) if done else ("pause_circle", TEXT_DIM) if not sub.active
+                       else ("receipt_long", AMBER) if is_inst else ("autorenew", INDIGO))
+        per = "month" if sub.billing_cycle == "monthly" else "year"
+        bits = []
+        if done:
+            bits.append("Paid off")
+        elif not sub.active:
+            bits.append("Paused")
+        elif is_inst:
+            left = max(sub.total_payments - sub.payments_made, 0)
+            bits.append(f"{sub.payments_made} of {sub.total_payments} paid · {CUR}{left * sub.amount:,.2f} left")
+        if sub.active and sub.next_payment_date:
+            nd, days = sub.next_payment_date, (sub.next_payment_date - date.today()).days
+            bits.append("overdue" if days < 0 else "due today" if days == 0 else "due tomorrow" if days == 1
+                        else f"due {nd.day} {nd:%b}")
+        list_row(icon, color, sub.name, " · ".join(bits) or f"every {per}",
+                 f"{CUR}{sub.amount:,.2f}/{'mo' if per == 'month' else 'yr'}",
+                 lambda _, sid=sub.id: open_sub(sid))
+
+      live = sorted([x for x in subs if x.active], key=lambda x: (x.next_payment_date or date.max, x.name.lower()))
+      rest = [x for x in subs if not x.active]
+      for title, group in (("Active", live), ("Paused & paid off", rest)):
+        if group:
+            with ui.element("div").classes("b-day"):
+                ui.label(title)
+                ui.label(str(len(group)))
+            with ui.column().classes(LIST_GROUP):
+                for sub in group:
+                    sub_row(sub)
 
     content()

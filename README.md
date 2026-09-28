@@ -75,9 +75,10 @@ month-over-month insights, and a savings chart with a cumulative "total saved" l
   install never hides a section while fresh installs stay lean.
 - **Zero-downtime schema evolution.** A lightweight auto-migration adds new
   model columns on startup, so the single SQLite file upgrades in place.
-- **A considered design system.** One theme (light/dark, system-aware), a shared
-  page-header + summary-strip + card language, ring-gauge dashboards, and a PWA
-  manifest so it installs to a phone home screen.
+- **A considered design system.** Light and dark modes built on CSS-variable
+  design tokens, a floating dock with one-tap quick-add and a Ctrl+K command
+  palette, a shared page-header + summary-strip + card language, ring-gauge
+  dashboards, and a PWA manifest so it installs to a phone home screen.
 
 ## Features at a glance
 

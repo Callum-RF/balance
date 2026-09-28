@@ -1,28 +1,33 @@
 """Capture the README screenshots into docs/screenshots/.
 
-Real-browser (Chromium via Playwright) captures at 2x, desktop width, so the
-app renders its sidebar rather than the mobile bottom nav.
+Real-browser (Chromium via Playwright) captures at 2x, desktop width.
 
-Prerequisites:
+Screenshots are public, so they must only ever show demo data. Run them
+against a throwaway sandbox -- never the real app -- which BALANCE_DB makes
+safe (seed_demo.py wipes the tables it fills, so it must not touch app.db):
+
   1. Install Playwright once:
        pip install playwright
        python -m playwright install chromium
-  2. Load demo data so the screenshots look alive (back up your real DB first —
-     seed_demo.py wipes operational rows):
-       PYTHONPATH=. python scripts/seed_demo.py
-  3. Have the app serving on http://localhost:8000  (python run.py)
+  2. Seed a demo database and serve it on :8001, away from the real app:
+       set BALANCE_DB=%TEMP%alance-demo.db
+       set BALANCE_NO_BACKUP=1
+       set NICEGUI_STORAGE_PATH=%TEMP%alance-demo-storage
+       python scripts/seed_demo.py
+       set BALANCE_PORT=8001
+       python run.py
+     (Turn on every module in the demo's Settings so Forecast / Pantry exist.)
+  3. From the project root, in another terminal:
+       python scripts/capture_screenshots.py
 
-Then, from the project root:
-    python scripts/capture_screenshots.py
-
-Restore your real database afterwards if you seeded demo data.
+BALANCE_URL overrides the address; it defaults to the sandbox, not :8000.
 """
 import os
 import time
 
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get("BALANCE_URL", "http://localhost:8000")
+BASE = os.environ.get("BALANCE_URL", "http://127.0.0.1:8001")   # the demo sandbox
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "screenshots")
 WIDTH = 1360
 
@@ -39,7 +44,7 @@ SHOTS = [
 SCROLL_JS = """(t) => {
   const el = [...document.querySelectorAll('*')]
     .find(e => e.children.length === 0 && e.textContent.trim() === t);
-  if (el) { el.scrollIntoView({block: 'start'}); window.scrollBy(0, -16); }
+  if (el) { el.scrollIntoView({block: "start"}); window.scrollBy(0, -84); }  // clear the fixed top bar
   return !!el;
 }"""
 

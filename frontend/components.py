@@ -53,19 +53,13 @@ def card_box_accent():
 
 
 def page_header(title: str, subtitle: str = None, icon: str = None):
-    """A designed page header: a circular accent chip + title (+ subtitle) and a
-    short accent underline -- a bit of identity beyond plain bold text, and a
-    deliberate round element to break up the rounded-rectangle grid."""
-    with ui.row().classes("w-full items-center gap-3"):
-        if icon:
-            with ui.element("div").classes("flex items-center justify-center rounded-full shrink-0").style(
-                    f"width:2.5rem;height:2.5rem;background:{alpha(INDIGO, '1f')};"):
-                ui.icon(icon).classes("text-xl").style(f"color:{INDIGO}")
-        with ui.column().classes("gap-0"):
-            ui.label(title).classes("text-2xl font-bold leading-tight")
-            if subtitle:
-                ui.label(subtitle).classes("text-sm").style(f"color:{TEXT_DIM}")
-    ui.element("div").classes("h-1 rounded-full mt-2 mb-1").style(f"width:2.75rem;background:{INDIGO}")
+    """A page's title: large and bold, with an optional one-line subtitle -- the
+    same heading as Medley, Cadence and Crescendo. (`icon` is accepted for the
+    callers that still pass one; the Ensemble heading doesn't use it.)"""
+    with ui.column().classes("gap-1"):
+        ui.label(title).classes("b-title")
+        if subtitle:
+            ui.label(subtitle).classes("b-subtitle")
 
 
 def summary_strip(stats, width_class: str = ""):

@@ -1,12 +1,19 @@
-"""Page chrome: theme CSS, the app switcher, the header / nav shell."""
+"""Page chrome, in the Ensemble style shared with Medley, Cadence and
+Crescendo: a frosted top bar (search, theme, app switcher), a floating dock
+with a quick-add button in the middle, and a Ctrl/Cmd+K command palette.
+
+Pages render inside ui.sub_pages, so this chrome stays put while they change;
+the dock's highlight follows the address client-side (see _NAV_JS)."""
 
 from nicegui import ui
+from sqlmodel import Session, select
 
+from backend.database import engine
+from backend.models import AppSettings
 from backend.modules import MODULES
 
 from . import theme as _theme
 from .common import (
-    BOTTOM_NAV_ITEMS,
     NAV_ITEMS,
     load_app_settings,
     load_enabled_modules,
@@ -49,7 +56,7 @@ def _module_guard(page_fn, module_key):
 
 
 def inject_theme():
-    (ui.dark_mode().enable() if _theme.THEME_DARK else ui.dark_mode().disable())
+    dark = ui.dark_mode(_theme.THEME_DARK)
     # Make Quasar's *brand* primary the theme accent too. The CSS --q-primary
     # override below only reaches components that read that var; components that
     # bake the brand colour into an inline style (q-uploader header, q-loading-bar,
@@ -158,22 +165,6 @@ def inject_theme():
         .q-date__calendar-item--out {{ color: {TEXT_DIM}; opacity: 0.5; }}
         .q-date__navigation .q-btn {{ color: {TEXT}; }}
 
-        /* Mobile bottom navigation bar */
-        .bottom-nav {{
-            background: {SURFACE};
-            border-top: 1px solid {BORDER};
-            padding-bottom: env(safe-area-inset-bottom);
-        }}
-        .bottom-nav-item {{ color: {TEXT_DIM}; transition: color .15s; }}
-        .bottom-nav-item:hover {{ color: {TEXT}; }}
-        .bottom-nav-item.nav-active {{ color: {INDIGO}; }}
-
-        /* Active-page highlight in the drawer / sidebar (desktop + mobile), so
-           the current page is indicated consistently with the bottom nav. */
-        .drawer-nav-item {{ transition: color .15s, background .15s; }}
-        .drawer-nav-item:hover {{ color: {TEXT} !important; background: {SURFACE_2}; }}
-        .drawer-nav-item.nav-active {{ color: {TEXT} !important; background: {alpha(INDIGO, '22')}; }}
-
         /* Segmented toggles (meal / type selectors) -- theme-aware; replaces
            Quasar's fixed dark/grey-5, which rendered dark boxes on light themes.
            Inactive: transparent over the SURFACE_2 track with dim text; active:
@@ -181,33 +172,10 @@ def inject_theme():
         .seg-toggle .q-btn {{ color: {TEXT_DIM} !important; background: transparent !important; }}
         .seg-toggle .q-btn.bg-primary {{ color: #fff !important; }}
     </style>
-    <script>
-      // Keep the nav highlight in sync with the current sub_pages route, across
-      // the bottom nav, the drawer/sidebar, and the "More" button. sub_pages
-      // navigates via history.pushState (no reload), so we patch it to fire an
-      // update, plus popstate (back/forward) and initial load.
-      (function () {{
-        function updateNav() {{
-          var path = window.location.pathname;
-          document.querySelectorAll('.bottom-nav a[href], a.drawer-nav-item[href]').forEach(function (a) {{
-            a.classList.toggle('nav-active', a.getAttribute('href') === path);
-          }});
-          // Light up "More" whenever the current page isn't one of the primary
-          // bottom-nav destinations (i.e. it lives behind the drawer).
-          var primary = Array.prototype.map.call(
-            document.querySelectorAll('.bottom-nav a[href]'),
-            function (a) {{ return a.getAttribute('href'); }});
-          var more = document.querySelector('.more-nav-item');
-          if (more) more.classList.toggle('nav-active', primary.indexOf(path) === -1);
-        }}
-        var _push = history.pushState;
-        history.pushState = function () {{ _push.apply(this, arguments); setTimeout(updateNav, 0); }};
-        window.addEventListener('popstate', function () {{ setTimeout(updateNav, 0); }});
-        window.addEventListener('load', function () {{ setTimeout(updateNav, 100); }});
-        setTimeout(updateNav, 400);
-      }})();
-    </script>
     """)
+    ui.add_head_html(f"<style>{_SHELL_CSS}</style>")
+    ui.add_head_html(_NAV_JS)
+    return dark
 
 
 # Sibling apps served from this same tailnet node, for the header app-switcher.
@@ -277,104 +245,296 @@ def app_switcher():
                     ui.label("Ensemble")
 
 
-def shell():
-    """Responsive header + drawer nav. Persistent sidebar above the
-    breakpoint (desktop), collapsible overlay drawer below it (mobile) --
-    handled by Quasar's drawer 'default' behavior, not hand-rolled CSS.
-    Returns the main content column."""
-    load_app_settings()  # refresh currency so Settings changes apply immediately
-    inject_theme()
+_SHELL_CSS = """
+body.body--dark  { --b-glass: rgba(20,23,30,.74); --b-glass-strong: rgba(14,17,23,.88); }
+body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,237,225,.92); }
+.q-page-container, .q-layout { padding: 0 !important; }
 
-    with ui.header().classes("items-center justify-between px-3 py-2").style(
-        f"background:{SURFACE}; border-bottom:1px solid {BORDER};"
-    ):
-        with ui.row().classes("items-center gap-1"):
-            # NiceGUI defaults buttons to Quasar's text-primary class, whose
-            # !important beats a plain inline color -- so ours needs one too.
-            ui.button(on_click=lambda: drawer.toggle(), icon="menu").props("flat round dense").style(f"color:{TEXT} !important")
-            ui.label("bal=nce").classes("text-lg font-bold").style(f"color:{TEXT}")
-        # Right side of the header: jump to the other apps on this node.
-        app_switcher()
+/* Top bar: frosted, fixed. */
+.b-topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 2500; height: 60px;
+  display: flex; align-items: center; background: var(--b-glass-strong);
+  backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 1px 0 var(--b-border); }
+.b-topbar-in { width: 100%; max-width: 64rem; margin: 0 auto; padding: 0 20px;
+  display: flex; align-items: center; gap: 10px; }
+@media (max-width: 640px) { .b-topbar-in { padding: 0 12px; } }
+.b-wordmark { font-size: 19px; font-weight: 800; letter-spacing: -.02em; color: var(--b-text);
+  text-decoration: none; }
+.b-wordmark span { color: var(--b-indigo); }
+.b-search { margin-left: auto; display: flex; align-items: center; gap: 10px; height: 38px;
+  padding: 0 8px 0 14px; min-width: 250px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  color: var(--b-text-dim); background: var(--b-surface); border: 1px solid var(--b-border); }
+.b-search:hover { border-color: var(--b-indigo); }
+.b-search .kbd { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 6px;
+  border: 1px solid currentColor; opacity: .6; }
+@media (max-width: 640px) {
+  .b-search { min-width: 0; padding: 0 11px; }
+  .b-search .txt, .b-search .kbd { display: none; }
+}
+.b-icon-btn { color: var(--b-text-dim) !important; }
 
-    with ui.left_drawer().props("bordered breakpoint=1024 width=216").classes("p-3 gap-0.5").style(
-        f"background:{SURFACE}"
-    ) as drawer:
-        async def _close_drawer_on_mobile():
-            # Below the breakpoint the drawer is an overlay; after picking a page
-            # it should get out of the way. On desktop it's the persistent
-            # sidebar, so leave it open there.
-            if await ui.context.client.run_javascript("window.innerWidth < 1024"):
-                drawer.hide()
+/* Floating dock, with quick-add in the middle. */
+.b-dock { position: fixed; left: 50%; transform: translateX(-50%); z-index: 2600;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 2px; padding: 6px; border-radius: 999px;
+  background: var(--b-glass); border: 1px solid var(--b-border);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 14px 36px rgba(0,0,0,.28); user-select: none; -webkit-tap-highlight-color: transparent; }
+.b-dock-item { display: flex; align-items: center; gap: 0; height: 46px; padding: 0 13px;
+  border-radius: 999px; color: var(--b-text-dim); text-decoration: none; cursor: pointer;
+  font-size: 13px; font-weight: 650; white-space: nowrap; transition: background .15s, color .15s; }
+.b-dock-item .q-icon { font-size: 22px; }
+.b-dock-item:hover { color: var(--b-text); background: var(--b-surface-2); }
+.b-dock-item.active { background: color-mix(in srgb, var(--b-indigo) 16%, transparent);
+  color: var(--b-indigo); gap: 7px; }
+.b-dock-label { max-width: 0; overflow: hidden; transition: max-width .2s ease; }
+.b-dock-item.active .b-dock-label { max-width: 110px; }
+.b-dock-add.q-btn { width: 50px; height: 50px; min-height: 50px; margin: 0 4px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--b-indigo) 40%, transparent); }
+.b-dock-add .q-icon { font-size: 28px; }
+@media (max-width: 640px) {
+  .b-dock { left: 12px; right: 12px; transform: none; justify-content: space-between; }
+  .b-dock-item.active .b-dock-label { max-width: 0; }
+  .b-dock-item.active { gap: 0; }
+}
+.q-notifications__list--bottom { bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
 
-        enabled_modules = load_enabled_modules()
+/* Menus opened from the dock (quick-add, More). */
+.b-sheet { min-width: 250px; padding: 6px !important; border-radius: 16px !important; }
+.b-sheet-label { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--b-text-dim); padding: 10px 12px 4px; }
+.b-sheet .q-item { border-radius: 10px; min-height: 44px; }
+.b-sheet .q-item .q-icon { color: var(--b-indigo); }
 
-        def _nav_item(label, target, icon):
-            with ui.link(target=target).classes(
-                "drawer-nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg no-underline"
-            ).style(f"color:{TEXT_DIM}").on("click", _close_drawer_on_mobile):
-                ui.icon(icon).classes("text-base")
-                ui.label(label).classes("text-sm")
+/* Page headings, as in the other Ensemble apps. */
+.b-title { font-size: 34px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05;
+  color: var(--b-text); }
+.b-subtitle { font-size: 14.5px; color: var(--b-text-dim); }
+.b-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--b-indigo); }
+@media (max-width: 640px) { .b-title { font-size: 30px; } }
 
-        def _section_label(text):
-            ui.label(text).classes("text-[10px] uppercase tracking-wider mt-3 mb-1 px-2.5").style(f"color:{TEXT_DIM}")
+/* Command palette */
+.b-palette { width: min(600px, 92vw); max-width: none !important; padding: 0 !important;
+  gap: 0 !important; margin-top: 11vh; align-self: flex-start; overflow: hidden;
+  border-radius: 18px !important; box-shadow: 0 30px 80px rgba(0,0,0,.45) !important; }
+.b-palette .b-pal-input .q-field__control { height: 56px; padding: 0 16px; }
+.b-palette .b-pal-input .q-field__control:before,
+.b-palette .b-pal-input .q-field__control:after { display: none; }
+.b-palette .b-pal-input input { font-size: 17px; }
+.b-pal-results { max-height: 52vh; overflow-y: auto; padding: 6px 8px 10px;
+  border-top: 1px solid var(--b-border); }
+.b-pal-group { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--b-text-dim); padding: 10px 10px 4px; }
+.b-pal-row { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 10px;
+  cursor: pointer; color: var(--b-text); font-size: 14px; font-weight: 550; }
+.b-pal-row .q-icon { color: var(--b-indigo); font-size: 20px; }
+.b-pal-row:hover { background: var(--b-surface-2); }
+.b-pal-row.sel { background: color-mix(in srgb, var(--b-indigo) 16%, transparent); }
+.b-pal-foot { display: flex; gap: 16px; padding: 9px 16px; font-size: 11px; color: var(--b-text-dim);
+  border-top: 1px solid var(--b-border); }
+"""
 
-        # Grouped, compact nav: core up top, optional areas under small section
-        # headers, Profile/Settings pinned below a divider. Sections with no
-        # enabled items are omitted, so a lean install just shows the essentials.
-        _bottom_routes = {"/profile", "/settings"}
-        _core = [it for it in NAV_ITEMS if it[3] is None and it[1] not in _bottom_routes]
-        _by_tier = {"money": [], "health": [], "power": []}
-        for it in NAV_ITEMS:
-            if it[3] and module_enabled(it[3], enabled_modules):
-                _by_tier[MODULES[it[3]][1]].append(it)
+# Ctrl/Cmd+K (or "/" when not typing) opens the palette -- handled in the page
+# so Chrome doesn't send Ctrl+K to its address bar. And the dock's highlight
+# follows the address: sub_pages navigates with history.pushState (no reload),
+# so that's patched to fire an update, as are back/forward and first load.
+_NAV_JS = """
+<script>
+document.addEventListener('keydown', function (ev) {
+  var t = ev.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'
+                                     || t.isContentEditable);
+  if (((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') || (ev.key === '/' && !typing)) {
+    ev.preventDefault();
+    if (window.emitEvent) emitEvent('b-palette');
+  }
+});
+(function () {
+  function updateNav() {
+    var path = window.location.pathname, hit = false;
+    document.querySelectorAll('.b-dock a.b-dock-item[href]').forEach(function (a) {
+      var on = a.getAttribute('href') === path;
+      a.classList.toggle('active', on);
+      hit = hit || on;
+    });
+    var more = document.querySelector('.b-dock .b-more');
+    if (more) more.classList.toggle('active', !hit && path !== '/add-transaction'
+                                              && path !== '/add-food' && path !== '/add-income');
+  }
+  var _push = history.pushState;
+  history.pushState = function () { _push.apply(this, arguments); setTimeout(updateNav, 0); };
+  window.addEventListener('popstate', function () { setTimeout(updateNav, 0); });
+  window.addEventListener('load', function () { setTimeout(updateNav, 100); });
+  setTimeout(updateNav, 400);
+})();
+</script>
+"""
 
-        for label, target, icon, _mod in _core:
-            _nav_item(label, target, icon)
-        for _title, _key in [("Money", "money"), ("Health", "health"), ("More", "power")]:
-            if not _by_tier[_key]:
-                continue
-            _section_label(_title)
-            for label, target, icon, _mod in _by_tier[_key]:
-                _nav_item(label, target, icon)
-        ui.separator().classes("my-2 opacity-50")
-        for it in NAV_ITEMS:
-            if it[1] in _bottom_routes:
-                _nav_item(it[0], it[1], it[2])
+# The dock: the three places visited daily, plus quick-add and More.
+DOCK = [("Home", "/", "space_dashboard"), ("Money", "/transactions", "receipt_long"),
+        ("Food", "/food-log", "restaurant")]
 
-    async def _sync_drawer_to_screen_width():
-        # NiceGUI's own open-on-desktop auto-detection (which the drawer's
-        # default value=None normally relies on) checks a Quasar-internal CSS
-        # class on connect, and that check can race with Quasar's own screen-
-        # width detection, occasionally leaving the drawer collapsed on a
-        # desktop-width first load. window.innerWidth has no such race.
-        width = await ui.context.client.run_javascript("window.innerWidth")
-        if width >= 1024:
-            drawer.show()
+
+def _quick_add_items(enabled):
+    items = [("Add expense", "/add-transaction", "remove_circle_outline"),
+             ("Log food", "/add-food", "restaurant")]
+    if module_enabled("income", enabled):
+        items.append(("Add income", "/add-income", "add_circle_outline"))
+    return items
+
+
+def _more_sections(enabled):
+    """Everything not on the dock, grouped the way the old sidebar was."""
+    on_dock = {route for _, route, _ in DOCK}
+    by_tier = {"money": [], "health": [], "power": []}
+    for label, route, icon, mod in NAV_ITEMS:
+        if mod and module_enabled(mod, enabled) and route not in on_dock:
+            by_tier[MODULES[mod][1]].append((label, route, icon))
+    sections = [(title, by_tier[key]) for title, key in
+                (("Money", "money"), ("Health", "health"), ("More", "power")) if by_tier[key]]
+    sections.append(("You", [(label, route, icon) for label, route, icon, _ in NAV_ITEMS
+                             if route in ("/profile", "/settings")]))
+    return sections
+
+
+def command_palette(toggle_theme, enabled):
+    """Jump to any page or quick action by typing. Arrow keys move, Enter
+    opens, Esc closes."""
+    state = {"items": [], "sel": 0}
+    fade = "transition-show=fade transition-hide=fade transition-duration=120"
+    with ui.dialog().props(fade) as dlg, ui.card().classes("b-palette"):
+        inp = ui.input(placeholder="Go to a page, or add something…").props(
+            "borderless autofocus debounce=100").classes("w-full b-pal-input")
+        with inp.add_slot("prepend"):
+            ui.icon("search").classes("text-xl").style(f"color:{INDIGO}")
+        results = ui.element("div").classes("b-pal-results w-full")
+        with ui.element("div").classes("b-pal-foot w-full"):
+            ui.label("↑↓ to move")
+            ui.label("Enter to open")
+            ui.label("Esc to close")
+
+    everything = (
+        [("Add", label, icon, route) for label, route, icon in _quick_add_items(enabled)]
+        + [("Go to", label, icon, route) for label, route, icon, mod in NAV_ITEMS
+           if module_enabled(mod, enabled)]
+        + [("Actions", "Switch light / dark", "brightness_6", None)]
+    )
+
+    def build(q):
+        q = (q or "").strip().casefold()
+        return [it for it in everything if not q or q in it[1].casefold()]
+
+    def render():
+        results.clear()
+        with results:
+            if not state["items"]:
+                ui.label("Nothing matches.").classes("b-pal-group")
+            last = None
+            for i, (group, label, icon, _route) in enumerate(state["items"]):
+                if group != last:
+                    ui.label(group).classes("b-pal-group")
+                    last = group
+                with ui.element("div").classes("b-pal-row" + (" sel" if i == state["sel"] else "")) as row:
+                    ui.icon(icon)
+                    ui.label(label)
+                row.on("click", lambda i=i: choose(i))
+
+    def refresh(q):
+        state["items"], state["sel"] = build(q), 0
+        render()
+
+    def move(d):
+        if state["items"]:
+            state["sel"] = (state["sel"] + d) % len(state["items"])
+            render()
+
+    def choose(i=None):
+        if not state["items"]:
+            return
+        _group, _label, _icon, route = state["items"][state["sel"] if i is None else i]
+        dlg.close()
+        if route is None:
+            toggle_theme()
         else:
-            drawer.hide()
+            ui.navigate.to(route)
 
-    ui.context.client.on_connect(_sync_drawer_to_screen_width)
+    inp.on_value_change(lambda e: refresh(e.value))
+    inp.on("keydown.down.prevent", lambda: move(1))
+    inp.on("keydown.up.prevent", lambda: move(-1))
+    inp.on("keydown.enter", lambda: choose())
 
-    # --- mobile bottom navigation bar (hidden on desktop, where the sidebar
-    # is persistent). Primary destinations get one-tap thumb access; "More"
-    # opens the drawer for the full list. ---
-    with ui.element("nav").classes(
-        "bottom-nav fixed bottom-0 left-0 right-0 z-40 flex justify-around items-stretch lg:hidden"
-    ):
-        for label, target, icon, mod in BOTTOM_NAV_ITEMS:
-            if not module_enabled(mod, enabled_modules):
-                continue
-            with ui.link(target=target).classes(
-                "bottom-nav-item flex flex-col items-center justify-center flex-1 py-2 gap-0.5 no-underline"
-            ):
-                ui.icon(icon).classes("text-xl")
-                ui.label(label).classes("text-[10px] leading-none")
-        with ui.element("div").classes(
-            "bottom-nav-item more-nav-item flex flex-col items-center justify-center flex-1 py-2 gap-0.5 cursor-pointer"
-        ).on("click", lambda: drawer.toggle()):
-            ui.icon("menu").classes("text-xl")
-            ui.label("More").classes("text-[10px] leading-none")
+    def open_palette():
+        inp.value = ""
+        refresh("")
+        dlg.open()
 
-    # extra bottom padding on mobile so the fixed bar never covers content
-    content = ui.column().classes(f"{PAGE} pb-24 lg:pb-6")
-    return content
+    dlg.on("show", lambda: inp.run_method("focus"))
+    ui.on("b-palette", open_palette)
+    return open_palette
+
+
+def shell():
+    """The page chrome. Returns the content column the current page renders
+    into."""
+    load_app_settings()   # currency + mode, so a change in Settings applies at once
+    dark = inject_theme()
+    enabled = load_enabled_modules()
+
+    def toggle_theme():
+        dark.value = not dark.value
+        mode = "dark" if dark.value else "light"
+        _theme.apply_theme(mode)
+        with Session(engine) as session:     # remembered, like any other setting
+            row = session.exec(select(AppSettings)).first()
+            row.theme = mode
+            session.add(row)
+            session.commit()
+
+    open_palette = command_palette(toggle_theme, enabled)
+
+    with ui.element("header").classes("b-topbar"):
+        with ui.element("div").classes("b-topbar-in"):
+            with ui.link(target="/").classes("b-wordmark"):
+                ui.html("bal<span>=</span>nce")
+            with ui.element("div").classes("b-search").on("click", open_palette):
+                ui.icon("search").classes("text-lg")
+                ui.label("Search or jump to…").classes("txt")
+                ui.label("Ctrl K").classes("kbd")
+            ui.button(icon="brightness_6", on_click=toggle_theme).props(
+                "flat round dense").classes("b-icon-btn").tooltip("Light / dark")
+            app_switcher()
+
+    with ui.element("nav").classes("b-dock"):
+        for label, route, icon in DOCK[:2]:
+            with ui.link(target=route).classes("b-dock-item").tooltip(label):
+                ui.icon(icon)
+                ui.label(label).classes("b-dock-label")
+        with ui.button(icon="add").props("round unelevated color=primary").classes(
+                "b-dock-add").tooltip("Add"):
+            with ui.menu().props('anchor="top middle" self="bottom middle"').classes("b-sheet"):
+                ui.label("Add").classes("b-sheet-label")
+                for label, route, icon in _quick_add_items(enabled):
+                    with ui.menu_item(on_click=lambda r=route: ui.navigate.to(r)):
+                        with ui.row().classes("items-center gap-3 no-wrap"):
+                            ui.icon(icon)
+                            ui.label(label)
+        for label, route, icon in DOCK[2:]:
+            with ui.link(target=route).classes("b-dock-item").tooltip(label):
+                ui.icon(icon)
+                ui.label(label).classes("b-dock-label")
+        with ui.element("div").classes("b-dock-item b-more").tooltip("More"):
+            ui.icon("apps")
+            ui.label("More").classes("b-dock-label")
+            with ui.menu().props('anchor="top right" self="bottom right"').classes("b-sheet"):
+                for title, items in _more_sections(enabled):
+                    ui.label(title).classes("b-sheet-label")
+                    for label, route, icon in items:
+                        with ui.menu_item(on_click=lambda r=route: ui.navigate.to(r)):
+                            with ui.row().classes("items-center gap-3 no-wrap"):
+                                ui.icon(icon)
+                                ui.label(label)
+
+    # Room for the fixed top bar above and the floating dock below. Inline, as
+    # PAGE's own responsive padding (sm:p-6) would otherwise win over a class.
+    return ui.column().classes(PAGE).style(
+        "padding-top: 84px; padding-bottom: calc(120px + env(safe-area-inset-bottom))")

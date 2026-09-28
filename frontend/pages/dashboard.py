@@ -96,9 +96,10 @@ def dashboard():
     else:
         greeting = "Good evening"
         focus = f"Today: {CUR}{_t_spend:,.0f} spent · {_t_cal:,.0f} kcal. Round off dinner and tomorrow's plan."
-    with ui.column().classes("gap-0"):
-        ui.label(greeting).classes("text-2xl font-bold leading-tight")
-        ui.label(focus).classes("text-sm").style(f"color:{TEXT_DIM}")
+    with ui.column().classes("gap-1"):
+        ui.label(f"{today:%A} {today.day} {today:%B}").classes("b-eyebrow")
+        ui.label(greeting).classes("b-title")
+        ui.label(focus).classes("b-subtitle")
 
     with Session(engine) as session:
         goals = session.exec(select(NutrientGoals)).first() or NutrientGoals()

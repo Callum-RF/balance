@@ -7,7 +7,7 @@ from backend.backup import start_scheduler
 from backend.recurring import start_scheduler as start_recurring_scheduler
 from backend.routers import (
     categories, transactions, food_log, stats,
-    profile, water, budget, pantry, subscriptions, prices, reference, forecast, income,
+    profile, water, budget, pantry, subscriptions, prices, reference, forecast, income, glance,
 )
 
 
@@ -34,6 +34,7 @@ app.include_router(prices.router)
 app.include_router(reference.router)
 app.include_router(forecast.router)
 app.include_router(income.router)
+app.include_router(glance.router)   # the Ensemble launcher's Balance tile
 
 
 @app.get("/api/status")

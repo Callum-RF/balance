@@ -461,6 +461,14 @@ def set_page_refresh(fn) -> None:
     ui.context.client.b_page_refresh = fn
 
 
+def open_add(kind: str = "expense") -> None:
+    """Open the quick-add sheet ("expense", "food" or "income") from a page,
+    e.g. a dashboard nudge. The shell registers the sheet per client."""
+    fn = getattr(ui.context.client, "b_open_sheet", None)
+    if fn:
+        fn(kind)
+
+
 def refresh_page() -> None:
     fn = getattr(ui.context.client, "b_page_refresh", None)
     if fn:

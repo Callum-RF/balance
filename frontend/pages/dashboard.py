@@ -26,6 +26,7 @@ from ..common import (
     format_date_header,
     friendly_range,
     module_enabled,
+    open_add,
     previous_window,
     resolve_window,
 )
@@ -36,9 +37,11 @@ from ..components import (
     date_field,
     empty_state,
     period_delta_badge,
+    pill_toggle,
     progress_row,
     ring_gauge,
     section_header,
+    summary_strip,
     thin_meter,
 )
 from ..theme import (
@@ -51,7 +54,6 @@ from ..theme import (
     SKY,
     SURFACE,
     SURFACE_2,
-    TEXT,
     TEXT_DIM,
     VIOLET,
     echart,
@@ -123,7 +125,6 @@ def dashboard():
     for t in month_transactions:
         month_spend_by_category[t.category_id] = month_spend_by_category.get(t.category_id, 0) + t.amount
 
-    calories_today = sum(f.calories or 0 for f in food_today)  # KPI tile only; Today card recomputes per selected day
     spent_this_month = sum(t.amount for t in month_transactions)
     income_this_month = sum(i.amount for i in month_income)
     net_this_month = income_this_month - spent_this_month
@@ -144,25 +145,45 @@ def dashboard():
             ).classes("text-sm mt-2")
             with ui.row().classes("gap-2 flex-wrap mt-3"):
                 ui.button("Add your first expense", icon="add",
-                          on_click=lambda: ui.navigate.to("/add-transaction")).props("unelevated no-caps color=primary")
+                          on_click=lambda: open_add("expense")).props("unelevated no-caps color=primary")
                 ui.button("Log your first meal", icon="restaurant",
-                          on_click=lambda: ui.navigate.to("/add-food")).props("unelevated no-caps color=primary")
+                          on_click=lambda: open_add("food")).props("unelevated no-caps color=primary")
             ui.label("This welcome disappears once you start logging.").classes(
                 "text-xs mt-2").style(f"color:{TEXT_DIM}")
 
-    # --- Quick actions: the primary "what do I do next" ---
-    with ui.row().classes("w-full gap-2 flex-wrap mt-1 mb-1"):
-        ui.button("Add expense", icon="add",
-                  on_click=lambda: ui.navigate.to("/add-transaction")).props("unelevated no-caps color=primary")
-        ui.button("Log meal", icon="restaurant",
-                  on_click=lambda: ui.navigate.to("/add-food")).props("unelevated no-caps color=primary")
-        if income_module:
-            ui.button("Add income", icon="payments",
-                      on_click=lambda: ui.navigate.to("/add-income")).props("outline no-caps color=primary")
+    # --- The month in figures, then the budget bar. (Adding lives on the dock's
+    # + button, so there are no add buttons here.) ---
+    days_left = max((month_end - today).days, 0)
+    has_budget = bool(overall_budget and overall_budget.monthly_amount)
+    budget_left = (overall_budget.monthly_amount - spent_this_month) if has_budget else 0
+    month_name = today.strftime("%B")
+    summary_strip([
+        (f"Spent in {month_name}", f"{CUR}{spent_this_month:,.0f}", AMBER),
+        has_budget and ("Left in budget" if budget_left >= 0 else "Over budget",
+                        f"{CUR}{abs(budget_left):,.0f}", EMERALD if budget_left >= 0 else RED),
+        income_module and (f"Income in {month_name}", f"{CUR}{income_this_month:,.0f}", EMERALD),
+        income_module and ("Net", f"{'+' if net_this_month >= 0 else '−'}{CUR}{abs(net_this_month):,.0f}",
+                           EMERALD if net_this_month >= 0 else RED),
+    ])
+    if has_budget:
+        with ui.element("div").classes("b-budget"):
+            thin_meter(spent_this_month, overall_budget.monthly_amount,
+                       RED if budget_left < 0 else (AMBER if spent_this_month >= 0.8 * overall_budget.monthly_amount
+                                                    else EMERALD))
+            with ui.element("div").classes("b-budget-cap"):
+                ui.html(f"<span><b>{CUR}{spent_this_month:,.0f}</b> of {CUR}{overall_budget.monthly_amount:,.0f} budget</span>")
+                ui.label(f"{days_left} day{'s' if days_left != 1 else ''} left" if days_left else "Last day of the month")
+            if category_budgets:
+                with ui.expansion("Budget by category").classes("w-full"):
+                    for cb in sorted(category_budgets, key=lambda b: categories.get(b.category_id, "")):
+                        progress_row(
+                            categories.get(cb.category_id, "Uncategorized"),
+                            month_spend_by_category.get(cb.category_id, 0),
+                            cb.monthly_amount, f" {CUR}", is_limit=True,
+                        )
 
     # --- Needs your attention: computed, verb-driven nudges (the actionable core) ---
     protein_today = sum(f.protein_g or 0 for f in food_today)
-    days_left = max((month_end - today).days, 0)
     groceries_id = next((cid for cid, n in categories.items() if n == "Groceries"), None)
     grocery_budget = next((b for b in category_budgets if groceries_id and b.category_id == groceries_id), None)
 
@@ -190,12 +211,12 @@ def dashboard():
         nudges.append(("savings", "Set a monthly budget to track your spending", INDIGO, "Set budget", "/profile"))
 
     if not food_today:
-        nudges.append(("restaurant", "No meals logged today", INDIGO, "Log meal", "/add-food"))
+        nudges.append(("restaurant", "No meals logged today", INDIGO, "Log meal", "food"))
     elif goals.protein_g and (goals.protein_g - protein_today) > 10:
         nudges.append(("fitness_center",
                        f"Protein {goals.protein_g - protein_today:,.0f}g short today "
                        f"({protein_today:,.0f}/{goals.protein_g:,.0f}g)",
-                       AMBER, "Log meal", "/add-food"))
+                       AMBER, "Log meal", "food"))
 
     _eat_out_ids = [cid for cid, n in categories.items() if n == "Eating Out"]
     _eat_out = sum(month_spend_by_category.get(cid, 0) for cid in _eat_out_ids)
@@ -218,24 +239,28 @@ def dashboard():
                            f"{len(_due)} subscription(s) renew this week ({CUR}{sum(s.amount for s in _due):,.0f})",
                            AMBER, "View", "/subscriptions"))
 
-    with card_box_accent().classes("w-full"):
-        section_header("Needs your attention", icon="notifications_active", icon_color=AMBER)
+    def _go(target):
+        # A route is a page; anything else is a quick-add kind ("food").
+        ui.navigate.to(target) if target.startswith("/") else open_add(target)
+
+    with card_box_accent().classes("w-full gap-1"):
+        section_header("Needs your attention")
         if not nudges:
-            with ui.row().classes("items-center gap-2"):
+            with ui.row().classes("items-center gap-2 py-1"):
                 ui.icon("check_circle").classes("text-lg").style(f"color:{EMERALD}")
                 ui.label("You're on track — nothing needs your attention.").classes("text-sm")
-        for _icon, _text, _color, _cta, _route in nudges[:5]:
-            with ui.row().classes("w-full items-center gap-3 py-1"):
-                ui.icon(_icon).classes("text-lg shrink-0").style(f"color:{_color}")
-                ui.label(_text).classes("text-sm flex-grow")
-                if _cta and _route:
-                    ui.button(_cta, on_click=lambda _, r=_route: ui.navigate.to(r)).props("flat dense no-caps color=primary")
-
-    # Budget state used by the "This month" card below. (The old KPI headline
-    # row was removed -- Calories duplicated the Today gauge, and Spent/Net
-    # duplicated the "This month" card.)
-    over_budget = bool(overall_budget and overall_budget.monthly_amount and spent_this_month > overall_budget.monthly_amount)
-    has_budget = bool(overall_budget and overall_budget.monthly_amount)
+        with ui.column().classes("w-full gap-0"):
+            for _icon, _text, _color, _cta, _route in nudges[:5]:
+                row = ui.element("div").classes("b-nudge")
+                if _route:
+                    row.on("click", lambda r=_route: _go(r))
+                with row:
+                    ui.element("span").classes("dot").style(f"background:{_color}")
+                    ui.label(_text).classes("b-nudge-text")
+                    if _cta and _route:
+                        with ui.element("div").classes("b-nudge-cta"):
+                            ui.label(_cta)
+                            ui.icon("chevron_right")
 
     # --- Today: nutrition, what to watch, and water -- navigable day by day ---
     LIMIT_FIELDS = [
@@ -282,10 +307,7 @@ def dashboard():
                 flagged.append((f"{name} {cur:,.0f}/{lim:,.0f}{unit}", AMBER))
 
         with today_card:
-            hdr = section_header(
-                format_date_header(sel), icon="wb_sunny", icon_color=INDIGO,
-                subtitle=sel.strftime("%A, %d %B"),
-            )
+            hdr = section_header(format_date_header(sel), subtitle=sel.strftime("%A, %d %B"))
             with hdr:
                 # Fixed control group so nothing shifts as you page days: the
                 # "Today" shortcut always occupies its slot (just hidden when
@@ -338,13 +360,14 @@ def dashboard():
                 ui.label(f"{water_ml:,.0f} / {(goals.water_ml or 0):,.0f} ml").classes("text-xs ml-auto").style(f"color:{TEXT_DIM}")
             thin_meter(water_ml, goals.water_ml, SKY)
             if is_today:
-                with ui.grid().classes("w-full grid-cols-2 sm:grid-cols-4 gap-2 mt-1"):
+                with ui.element("div").classes("b-water mt-1"):
                     for amount in [200, 330, 500, 750]:
-                        ui.button(f"{amount}ml", icon="water_drop", on_click=lambda e, amt=amount: add_water(amt)).props(
-                            "stack outline no-caps"
-                        ).classes("py-2 text-xs").style(f"color:{SKY}; border-color:{SKY};")
-                if waters:
-                    ui.button("Undo last", icon="undo", on_click=undo_water).props("flat dense no-caps").classes("self-start")
+                        with ui.element("div").classes("b-pill").on("click", lambda amt=amount: add_water(amt)):
+                            ui.icon("water_drop")
+                            ui.label(f"{amount} ml")
+                    if waters:
+                        ui.button("Undo", icon="undo", on_click=undo_water).props(
+                            "flat dense no-caps color=grey").tooltip("Remove the last glass")
 
     def add_water(amount_ml):
         with Session(engine) as session:
@@ -364,34 +387,6 @@ def dashboard():
 
     render_today()
 
-    # --- This month: income/spend breakdown and budget tracking ---
-    with card_box().classes("w-full"):
-        section_header("This month", icon="account_balance_wallet", icon_color=EMERALD,
-                       subtitle=today.strftime("%B %Y"))
-        _month_rows = []
-        if income_module:
-            _month_rows.append(("Income", f"{CUR}{income_this_month:,.2f}", EMERALD))
-        _month_rows.append(("Spent", f"{CUR}{spent_this_month:,.2f}", AMBER))
-        if income_module:
-            _month_rows.append(("Net", f"{'+' if net_this_month >= 0 else '−'}{CUR}{abs(net_this_month):,.2f}",
-                                EMERALD if net_this_month >= 0 else RED))
-        with ui.row().classes("w-full gap-3 flex-wrap"):
-            for lbl, val, col in _month_rows:
-                with ui.column().classes("gap-0 flex-1 min-w-[90px]"):
-                    ui.label(lbl).classes("text-xs").style(f"color:{TEXT_DIM}")
-                    ui.label(val).classes("text-xl font-bold").style(f"color:{col}")
-        if has_budget:
-            ui.separator().classes("my-1")
-            progress_row("Overall budget", spent_this_month, overall_budget.monthly_amount, f" {CUR}", is_limit=True)
-            if category_budgets:
-                with ui.expansion("Budget by category").classes("w-full mt-1"):
-                    for cb in sorted(category_budgets, key=lambda b: categories.get(b.category_id, "")):
-                        progress_row(
-                            categories.get(cb.category_id, "Uncategorized"),
-                            month_spend_by_category.get(cb.category_id, 0),
-                            cb.monthly_amount, f" {CUR}", is_limit=True,
-                        )
-
     # --- Cost per macro: the signature money x health crossover. Pantry items
     # carry both price and protein, so we can rank what gives the most protein
     # per pound -- the "eat well on a budget" insight no single-purpose app has.
@@ -408,7 +403,7 @@ def dashboard():
         best = protein_value[:3]
         worst = protein_value[-1]
         with card_box().classes("w-full"):
-            section_header("Best value protein", icon="fitness_center", icon_color=EMERALD,
+            section_header("Best value protein",
                            subtitle=f"Most protein per {CUR}1 in your pantry — handy for a budget-friendly bulk")
             for score, name, _cals in best:
                 with ui.row().classes("w-full items-center gap-2 py-1"):
@@ -465,11 +460,12 @@ def dashboard():
 
     if insights:
         with card_box().classes("w-full"):
-            section_header("Insights", icon="tips_and_updates", icon_color=AMBER,
+            section_header("Insights",
                            subtitle="Notable changes vs the same point last month")
             for _, text, color in insights[:3]:
-                with ui.row().classes("items-center gap-2"):
-                    ui.icon("trending_up" if color == AMBER else "trending_down").classes("text-base").style(f"color:{color}")
+                with ui.row().classes("items-start gap-2 no-wrap"):
+                    ui.icon("trending_up" if color == AMBER else "trending_down").classes(
+                        "text-base shrink-0 mt-0.5").style(f"color:{color}")
                     ui.label(text).classes("text-sm")
 
     # --- Savings: monthly net (income − spending) for the trailing 6 months ---
@@ -499,7 +495,7 @@ def dashboard():
             _run += v
             cumulative.append(round(_run, 2))
         with card_box().classes("w-full"):
-            hdr = section_header("Savings", icon="savings", icon_color=EMERALD,
+            hdr = section_header("Savings",
                                  subtitle="Monthly net (bars) and how it adds up (line), last 6 months")
             with hdr:
                 badge(f"{'+' if saved_total >= 0 else '−'}{CUR}{abs(saved_total):,.0f} over 6 months",
@@ -553,29 +549,27 @@ def dashboard():
     streaks = compute_streaks(today)
     if any(s["streak"] > 0 for s in streaks):
         with card_box().classes("w-full"):
-            section_header("Streaks", icon="local_fire_department", icon_color=AMBER,
-                           subtitle="Consecutive days hitting your goals -- keep them going")
-            with ui.row().classes("w-full gap-3 flex-wrap"):
+            section_header("Streaks", subtitle="Days in a row hitting your goals")
+            with ui.element("div").classes("b-streaks"):
                 for s in streaks:
                     if s["streak"] <= 0:
                         continue
-                    with ui.column().classes("items-center gap-0 px-4 py-2 rounded-xl").style(f"background:{SURFACE_2}"):
-                        with ui.row().classes("items-center gap-1"):
-                            ui.icon("local_fire_department").classes("text-base").style(f"color:{AMBER}")
-                            ui.label(str(s["streak"])).classes("text-xl font-bold leading-none").style(f"color:{TEXT}")
-                        ui.label(f"day{'s' if s['streak'] != 1 else ''}").classes("text-[10px]").style(f"color:{TEXT_DIM}")
-                        ui.label(s["label"]).classes("text-xs").style(f"color:{TEXT_DIM}")
+                    with ui.element("div").classes("b-streak"):
+                        ui.icon("local_fire_department").classes("text-xl").style(f"color:{AMBER}")
+                        ui.label(str(s["streak"])).classes("n")
+                        with ui.column().classes("gap-0"):
+                            ui.label(f"day{'s' if s['streak'] != 1 else ''}").classes("l")
+                            ui.label(s["label"]).classes("l")
 
     # --- Overview: spending & nutrition over a chosen window (centerpiece) ---
     with card_box().classes("w-full"):
-        section_header("Overview", icon="insights", icon_color=VIOLET,
+        section_header("Overview",
                        subtitle="Spending & nutrition over your chosen window")
+        period_state = {"value": "monthly"}
+        pill_toggle({"daily": "Day", "weekly": "Week", "monthly": "Month", "6month": "6 months",
+                     "yearly": "Year", "custom": "Custom"}, "monthly",
+                    lambda v: (period_state.update(value=v), refresh()))
         with ui.row().classes("w-full items-center gap-3 flex-wrap"):
-            period_select = ui.select(
-                {"daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", "6month": "6 Months",
-                 "yearly": "1 Year", "custom": "Custom range…"},
-                value="monthly", label="Period",
-            ).props("dense options-dense").classes("w-40")
             date_input = date_field(value=today.isoformat())
             with ui.row().classes("items-center gap-3 flex-wrap") as custom_row:
                 from_input = date_field("From", value=(today - timedelta(days=30)).isoformat())
@@ -589,7 +583,7 @@ def dashboard():
             nutrition_card = ui.column().classes(inner_card)
 
         def refresh():
-            period = period_select.value
+            period = period_state["value"]
             ref_date = date.fromisoformat(date_input.value)
             is_custom = period == "custom"
             custom_row.set_visibility(is_custom)
@@ -603,7 +597,6 @@ def dashboard():
             render_expenses(expense_card, period, ref_date, custom_range=custom_range)
             render_nutrition(nutrition_card, period, ref_date, goals, custom_range=custom_range)
 
-        period_select.on_value_change(lambda e: refresh())
         date_input.on_value_change(lambda e: refresh())
         from_input.on_value_change(lambda e: refresh())
         to_input.on_value_change(lambda e: refresh())
@@ -634,7 +627,7 @@ def render_expenses(container, period, ref_date, custom_range=None):
         by_category[name] = by_category.get(name, 0) + t.amount
 
     with container:
-        section_header("Expenses", icon="shopping_cart", icon_color=AMBER,
+        section_header("Expenses",
                        subtitle=friendly_range(start, end, period))
         with ui.row().classes("gap-8 mt-1 items-end"):
             with ui.column().classes("gap-0"):
@@ -699,7 +692,7 @@ def render_amount_trend(container, model, date_col, title, icon, color, period, 
 
     span_days = (end - start).days + 1
     with container:
-        section_header(title, icon=icon, icon_color=color, subtitle=friendly_range(start, end, period))
+        section_header(title, subtitle=friendly_range(start, end, period))
         if span_days <= 1:
             empty_state("Pick a longer period to see a trend.", icon)
             return
@@ -849,7 +842,7 @@ def render_nutrition(container, period, ref_date, goals, custom_range=None):
         prev_avg_cal = prev_total_cal / prev_days if prev_days else None
 
     with container:
-        section_header("Nutrition", icon="restaurant", icon_color=INDIGO,
+        section_header("Nutrition",
                        subtitle=friendly_range(start, end, period))
         with ui.row().classes("gap-8 mt-1 items-end"):
             with ui.column().classes("gap-0"):

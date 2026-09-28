@@ -387,6 +387,28 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   margin: 16px 2px 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--b-text-dim); }
 
+/* Dashboard */
+.b-budget { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: -2px; }
+.b-budget-cap { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px;
+  color: var(--b-text-dim); }
+.b-budget-cap b { color: var(--b-text); font-weight: 650; }
+.b-nudge { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 4px;
+  cursor: pointer; border-radius: 10px; }
+.b-nudge + .b-nudge { border-top: 1px solid var(--b-border); border-radius: 0; }
+.b-nudge:hover .b-nudge-cta { text-decoration: underline; }
+.b-nudge .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.b-nudge-text { flex: 1; min-width: 0; font-size: 14px; color: var(--b-text); }
+.b-nudge-cta { display: flex; align-items: center; font-size: 13px; font-weight: 650;
+  color: var(--b-indigo); white-space: nowrap; }
+.b-nudge-cta .q-icon { font-size: 18px; }
+.b-water { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.b-water .b-pill .q-icon { font-size: 15px; margin-right: 4px; color: var(--b-sky); }
+.b-streaks { display: flex; gap: 10px; flex-wrap: wrap; }
+.b-streak { display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 12px;
+  border-radius: 14px; background: var(--b-surface-2); }
+.b-streak .n { font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+.b-streak .l { font-size: 12px; color: var(--b-text-dim); line-height: 1.25; }
+
 /* Quick-add sheet */
 .b-addsheet { width: min(560px, 100vw); max-width: 100vw !important; max-height: 88vh;
   border-radius: 22px 22px 0 0 !important; padding: 0 !important; overflow: hidden;
@@ -654,6 +676,7 @@ def shell():
             session.commit()
 
     open_sheet = quick_add_sheet(enabled)
+    ui.context.client.b_open_sheet = open_sheet     # common.open_add
     open_palette = command_palette(toggle_theme, enabled, open_sheet)
 
     with ui.element("header").classes("b-topbar"):

@@ -26,12 +26,12 @@ from ..common import (
     set_page_refresh,
 )
 from ..components import (
-    card_box,
     date_field,
     empty_state,
     form_frame,
     list_row,
     page_header,
+    period_pills,
     pill_toggle,
     section_header,
     segmented,
@@ -561,19 +561,14 @@ def transactions_page():
     set_page_refresh(refresh_all)
 
     with summary_view:
-        with card_box().classes("w-full"):
-            period_select = ui.select(
-                {"weekly": "Week", "monthly": "Month", "6month": "6 Months", "yearly": "Year", "2year": "2 Years", "all_time": "All time"},
-                value="monthly", label="Period",
-            ).props("dense options-dense").classes("w-40")
+        period = period_pills(lambda: refresh_summary())
         trend_container = ui.column().classes(CARD)
         summary_container = ui.column().classes(CARD)
 
         def refresh_summary():
             render_amount_trend(trend_container, Transaction, Transaction.date, "Spending trend",
-                                "show_chart", AMBER, period_select.value, date.today(),
+                                "show_chart", AMBER, period(), date.today(),
                                 empty_hint="No spending recorded in this period.")
-            render_expenses(summary_container, period_select.value, date.today())
+            render_expenses(summary_container, period(), date.today())
 
-        period_select.on_value_change(lambda e: refresh_summary())
         refresh_summary()

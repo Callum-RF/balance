@@ -14,6 +14,8 @@ from backend.modules import MODULES
 
 from . import theme as _theme
 from .common import (
+    CUR,
+    INCOME_ICONS,
     MEAL_ICONS,
     NAV_ITEMS,
     load_app_settings,
@@ -26,6 +28,7 @@ from .theme import (
     _TOKEN_KEYS,
     BG,
     BORDER,
+    EMERALD,
     INDIGO,
     PAGE,
     SURFACE,
@@ -395,7 +398,8 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 .b-nudge { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 4px;
   cursor: pointer; border-radius: 10px; }
 .b-nudge + .b-nudge { border-top: 1px solid var(--b-border); border-radius: 0; }
-.b-nudge:hover .b-nudge-cta { text-decoration: underline; }
+.b-nudge-cta .q-icon { transition: transform .15s; }
+.b-nudge:hover .b-nudge-cta .q-icon { transform: translateX(3px); }
 .b-nudge .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
 .b-nudge-text { flex: 1; min-width: 0; font-size: 14px; color: var(--b-text); }
 .b-nudge-cta { display: flex; align-items: center; font-size: 13px; font-weight: 650;
@@ -521,7 +525,7 @@ def quick_add_sheet(enabled):
     the page. Rises from the bottom on a phone. Saving closes it and refreshes
     the page underneath (see common.refresh_page). Returns open_sheet(kind)."""
     from .pages.food import recent_foods, relog_food, render_add_food_form
-    from .pages.income import render_add_income_form
+    from .pages.income import recent_incomes, relog_income, render_add_income_form
     from .pages.transactions import render_add_transaction_form
 
     kinds = {k: v for k, v in _ADD_KINDS.items() if k != "income" or module_enabled("income", enabled)}
@@ -547,6 +551,13 @@ def quick_add_sheet(enabled):
         ui.notify(f"Logged {name} for today", type="positive")
         refresh_page()
 
+    def one_tap_income(iid):
+        what = relog_income(iid)
+        dlg.close()
+        if what:
+            ui.notify(f"Logged {what} for today", type="positive")
+        refresh_page()
+
     def show(kind):
         state["kind"] = kind
         body.clear()
@@ -566,6 +577,17 @@ def quick_add_sheet(enabled):
                                     ui.label(f"{f.calories or 0:,.0f} kcal").classes("k")
                 render_add_food_form(on_saved=saved, compact=True)
             elif kind == "income":
+                repeats = recent_incomes()
+                if repeats:
+                    ui.label("Again today? Tap to log").classes("b-count")
+                    with ui.element("div").classes("b-recent"):
+                        for i in repeats:
+                            with ui.element("div").classes("b-recent-chip").on(
+                                    "click", lambda iid=i.id: one_tap_income(iid)):
+                                ui.icon(INCOME_ICONS.get(i.source, "attach_money")).style(f"color:{EMERALD}")
+                                with ui.column().classes("gap-0"):
+                                    ui.label(i.payer or i.source).classes("n")
+                                    ui.label(f"{CUR}{i.amount:,.2f}").classes("k")
                 render_add_income_form(on_saved=saved, compact=True)
             else:
                 render_add_transaction_form(on_saved=saved, compact=True)

@@ -429,3 +429,20 @@ def list_row(icon: str, color: str, title: str, subtitle: str, value: str, on_cl
             ui.label(title).classes("b-row-title")
             ui.label(subtitle).classes("b-row-sub")
         ui.label(value).classes("b-row-value")
+
+
+SUMMARY_PERIODS = {"weekly": "Week", "monthly": "Month", "6month": "6 months", "yearly": "Year",
+                   "2year": "2 years", "all_time": "All time"}
+
+
+def period_pills(on_change, value: str = "monthly"):
+    """The Summary views' period picker, as pills. Returns a getter for the
+    current period key."""
+    state = {"value": value}
+
+    def changed(key):
+        state["value"] = key
+        on_change()
+
+    pill_toggle(SUMMARY_PERIODS, value, changed)
+    return lambda: state["value"]

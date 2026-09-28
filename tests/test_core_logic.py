@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.routers.stats import period_bounds  # noqa: E402
 from backend.routers.forecast import estimate_bmr, ACTIVITY_MULTIPLIERS  # noqa: E402
-from frontend.ui import (  # noqa: E402
+from frontend.common import (  # noqa: E402
     resolve_window, previous_window, detect_recurring_transactions,
     expiry_meta, friendly_range,
 )

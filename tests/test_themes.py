@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from frontend.ui import THEMES, _TOKEN_KEYS  # noqa: E402
+from frontend.theme import THEMES, _TOKEN_KEYS  # noqa: E402
 
 
 # ---- WCAG relative-luminance contrast -------------------------------------

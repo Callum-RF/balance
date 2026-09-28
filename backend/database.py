@@ -14,7 +14,10 @@ from backend.modules import MODULES, MODULES_SENTINEL
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, "app.db")
+# BALANCE_DB points a run (a sandbox, the demo-screenshot script) at another
+# database file, so trying things out -- or seeding demo data, which wipes the
+# tables it fills -- can never touch the real one.
+DB_PATH = os.environ.get("BALANCE_DB") or os.path.join(DATA_DIR, "app.db")
 
 RECEIPTS_DIR = os.path.join(DATA_DIR, "receipts")
 os.makedirs(RECEIPTS_DIR, exist_ok=True)

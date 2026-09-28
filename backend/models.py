@@ -273,7 +273,7 @@ class NutrientGoalsUpdate(SQLModel):
 class AppSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     currency: str = "£"
-    theme: str = "midnight"
+    theme: str = "dark"   # "light" or "dark" (older preset names are mapped)
     pin_hash: Optional[str] = None
     pin_salt: Optional[str] = None
     # Optional off-machine backup target (e.g. an external drive or a

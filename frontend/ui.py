@@ -10,6 +10,7 @@ import inspect
 import io
 import json
 import os
+import re
 import secrets
 import statistics
 import uuid
@@ -41,66 +42,111 @@ from backend.routers.forecast import compute_forecast, estimate_bmr, ACTIVITY_MU
 from backend.nutrient_info import NUTRIENT_INFO, CAFFEINE_LIKE_SUBSTANCES
 
 # ---------------------------------------------------------------------------
-# Design tokens & themes. Every color in the app flows from these module-level
-# tokens, which are read inside f-strings at render time -- so apply_theme()
-# can swap the entire look by reassigning them. Light themes also swap the
-# accent set for darker variants that keep contrast on pale surfaces.
+# Design tokens: Light and Dark, with indigo -- the same cream / charcoal
+# palettes as Medley, Cadence and Crescendo, so the four Ensemble apps read as
+# one family.
+#
+# Every token is a CSS variable (var(--b-...)), defined once per mode in
+# inject_theme(). So the tokens are constants: pages read them inside
+# f-strings exactly as before, they're safe to import from any module, and
+# switching mode is purely a CSS change. The hex values live in THEMES, for the
+# few places CSS can't reach: ECharts draws on a canvas (see echart()), and the
+# browser's theme-color meta tag.
 # ---------------------------------------------------------------------------
 _TOKEN_KEYS = ("BG", "SURFACE", "SURFACE_2", "BORDER", "TEXT", "TEXT_DIM",
                "INDIGO", "EMERALD", "AMBER", "RED", "SKY", "VIOLET")
 
 THEMES = {
-    "midnight": dict(label="Midnight", dark=True,
-                     BG="#0B0B0F", SURFACE="#151519", SURFACE_2="#1C1C22", BORDER="#26262E",
-                     TEXT="#E4E4E7", TEXT_DIM="#8A8A93",
-                     INDIGO="#6366F1", EMERALD="#34D399", AMBER="#F59E0B",
-                     RED="#F87171", SKY="#38BDF8", VIOLET="#A78BFA"),
-    "ocean": dict(label="Ocean", dark=True,
-                  BG="#0A1017", SURFACE="#101823", SURFACE_2="#17222F", BORDER="#233240",
-                  TEXT="#E2E8F0", TEXT_DIM="#8496AB",
-                  INDIGO="#38BDF8", EMERALD="#34D399", AMBER="#FBBF24",
-                  RED="#F87171", SKY="#7DD3FC", VIOLET="#A5B4FC"),
-    "cream": dict(label="Cream", dark=False,
-                  BG="#F4EFE6", SURFACE="#FDFBF6", SURFACE_2="#EDE7DA", BORDER="#DCD3C2",
-                  TEXT="#2A2419", TEXT_DIM="#6E6350",  # darkened: #877C68 was 3.6:1, below AA
+    "dark": dict(label="Dark", dark=True,
+                 BG="#0E1117", SURFACE="#181C23", SURFACE_2="#212630", BORDER="#2A3039",
+                 TEXT="#E7EAEF", TEXT_DIM="#9BA3B0",
+                 INDIGO="#818CF8", EMERALD="#34D399", AMBER="#F59E0B",
+                 RED="#F87171", SKY="#38BDF8", VIOLET="#A78BFA"),
+    "light": dict(label="Light", dark=False,
+                  BG="#F3EDE1", SURFACE="#FDFBF6", SURFACE_2="#ECE5D6", BORDER="#E0D8C6",
+                  TEXT="#2C2A22", TEXT_DIM="#5C5647",
                   INDIGO="#4F46E5", EMERALD="#047857", AMBER="#B45309",
                   RED="#DC2626", SKY="#0369A1", VIOLET="#6D28D9"),
-    "lavender": dict(label="Lavender", dark=False,
-                     BG="#F2EEFA", SURFACE="#FCFAFF", SURFACE_2="#EAE3F6", BORDER="#D8CCEC",
-                     TEXT="#2C2340", TEXT_DIM="#6E6187",  # darkened: #83769F was 3.6:1, below AA
-                     INDIGO="#6D28D9", EMERALD="#047857", AMBER="#B45309",
-                     RED="#DC2626", SKY="#0369A1", VIOLET="#7C3AED"),
 }
+# Settings saved before the move to Light/Dark name one of the old presets.
+_LEGACY_THEMES = {"midnight": "dark", "ocean": "dark", "cream": "light", "lavender": "light"}
 
-ACTIVE_THEME = "midnight"
-THEME_DARK = True
-BG = SURFACE = SURFACE_2 = BORDER = TEXT = TEXT_DIM = ""
-INDIGO = EMERALD = AMBER = RED = SKY = VIOLET = ""
-CARD = LIST_GROUP = CARD_ACCENT = ""
-CHART_PALETTE: list = []
+
+def _var(key: str) -> str:
+    return f"var(--b-{key.lower().replace('_', '-')})"
+
+
+BG, SURFACE, SURFACE_2, BORDER, TEXT, TEXT_DIM = (
+    _var(k) for k in ("BG", "SURFACE", "SURFACE_2", "BORDER", "TEXT", "TEXT_DIM"))
+INDIGO, EMERALD, AMBER, RED, SKY, VIOLET = (
+    _var(k) for k in ("INDIGO", "EMERALD", "AMBER", "RED", "SKY", "VIOLET"))
+
+
+def alpha(color: str, hex_alpha: str) -> str:
+    """A token at partial opacity -- what "#6366F1" + "22" used to do, which
+    can't be done by appending digits to a CSS variable."""
+    pct = round(int(hex_alpha, 16) / 255 * 100)
+    return f"color-mix(in srgb, {color} {pct}%, transparent)"
+
+
+CARD = f"surface-card bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl p-4 sm:p-5 gap-3 w-full"
+# Hero/accent variant of CARD: faint accent wash + a touch more lift, for the
+# single "look here first" card on a screen (dashboard attention / welcome).
+CARD_ACCENT = "surface-card surface-card-accent border rounded-2xl p-4 sm:p-5 gap-3 w-full"
+# A bordered surface holding a day's list rows with hairline dividers --
+# the "grouped list" look used by Transactions / Food Log / Settings.
+LIST_GROUP = f"bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl w-full overflow-hidden gap-0 p-0"
+CHART_PALETTE = [INDIGO, EMERALD, AMBER, SKY, RED, VIOLET, "#FB923C", "#2DD4BF"]
 PAGE = "w-full max-w-5xl mx-auto p-3 sm:p-6 gap-4 sm:gap-6"
+
+ACTIVE_THEME = "dark"
+THEME_DARK = True
 
 
 def apply_theme(name: str):
-    """Point every design token at the named theme and rebuild the derived
-    class strings. Takes effect on the next page render."""
-    global ACTIVE_THEME, THEME_DARK, CARD, LIST_GROUP, CARD_ACCENT, CHART_PALETTE
-    theme = THEMES.get(name, THEMES["midnight"])
-    ACTIVE_THEME = name if name in THEMES else "midnight"
-    THEME_DARK = theme["dark"]
+    """Select Light or Dark (older preset names map onto one of the two).
+    Only the mode changes: the tokens are CSS variables either way."""
+    global ACTIVE_THEME, THEME_DARK
+    name = _LEGACY_THEMES.get(name, name)
+    ACTIVE_THEME = name if name in THEMES else "dark"
+    THEME_DARK = THEMES[ACTIVE_THEME]["dark"]
+
+
+def hex_of(token: str) -> str:
+    """The current mode's hex for a token (for canvas charts and meta tags)."""
     for key in _TOKEN_KEYS:
-        globals()[key] = theme[key]
-    CARD = f"surface-card bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl p-4 sm:p-5 gap-3 w-full"
-    # Hero/accent variant of CARD: faint accent wash + a touch more lift, for the
-    # single "look here first" card on a screen (dashboard attention / welcome).
-    CARD_ACCENT = f"surface-card surface-card-accent border rounded-2xl p-4 sm:p-5 gap-3 w-full"
-    # A bordered surface holding a day's list rows with hairline dividers --
-    # the "grouped list" look used by Transactions / Food Log / Settings.
-    LIST_GROUP = f"bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl w-full overflow-hidden gap-0 p-0"
-    CHART_PALETTE = [INDIGO, EMERALD, AMBER, SKY, RED, VIOLET, "#FB923C", "#2DD4BF"]
+        if token == _var(key):
+            return THEMES[ACTIVE_THEME][key]
+    return token
 
 
-apply_theme("midnight")
+_VAR_RE = re.compile(r"var\(--b-([a-z0-9-]+)\)")
+_MIX_RE = re.compile(r"color-mix\(in srgb, var\(--b-([a-z0-9-]+)\) (\d+)%, transparent\)")
+
+
+def _solid(value):
+    """Swap CSS variables for real colours throughout a chart's options."""
+    if isinstance(value, dict):
+        return {k: _solid(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_solid(v) for v in value]
+    if isinstance(value, str) and "--b-" in value:
+        def mix(m):
+            h = hex_of(f"var(--b-{m.group(1)})").lstrip("#")
+            r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+            return f"rgba({r},{g},{b},{int(m.group(2)) / 100:.2f})"
+        value = _MIX_RE.sub(mix, value)
+        return _VAR_RE.sub(lambda m: hex_of(f"var(--b-{m.group(1)})"), value)
+    return value
+
+
+def echart(options: dict):
+    """ui.echart, with theme colours resolved: ECharts draws on a canvas, which
+    can't read CSS variables."""
+    return ui.echart(_solid(options))
+
+
+apply_theme("dark")
 
 # Display currency, loaded from AppSettings at each shell render so a change
 # on the Settings page applies immediately. Module-level because it's read
@@ -120,7 +166,7 @@ def load_app_settings():
             session.commit()
             session.refresh(settings)
     CUR = settings.currency or "£"
-    apply_theme(settings.theme or "midnight")
+    apply_theme(settings.theme or "dark")
     return settings
 
 
@@ -254,7 +300,9 @@ def inject_theme():
     # override below only reaches components that read that var; components that
     # bake the brand colour into an inline style (q-uploader header, q-loading-bar,
     # ripples, spinners) stay NiceGUI-default blue unless we set the brand here.
-    ui.colors(primary=INDIGO)
+    # Filled buttons carry white text, so they use a deeper indigo than the
+    # bright one text and icons get in dark mode (#818CF8 behind white is ~3:1).
+    ui.colors(primary="#6366F1" if THEME_DARK else THEMES["light"]["INDIGO"])
     ui.add_head_html(f"""
     <link rel="icon" type="image/png" href="/icon-assets/icon.png">
     <link rel="apple-touch-icon" href="/icon-assets/icon.png">
@@ -273,8 +321,13 @@ def inject_theme():
     </script>
     """)
     ui.add_head_html(_APP_SWITCH_JS)
-    ui.add_head_html(f"""<meta name="theme-color" content="{BG}">
+    def _vars(mode):
+        return " ".join(f"{_var(k)[4:-1]}: {THEMES[mode][k]};" for k in _TOKEN_KEYS)
+
+    ui.add_head_html(f"""<meta name="theme-color" content="{THEMES[ACTIVE_THEME]['BG']}">
     <style>
+        body.body--dark {{ {_vars("dark")} }}
+        body.body--light {{ {_vars("light")} }}
         body {{ background-color: {BG} !important; color: {TEXT}; }}
         ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
         ::-webkit-scrollbar-thumb {{ background: {BORDER}; border-radius: 4px; }}
@@ -292,9 +345,9 @@ def inject_theme():
         /* Hero/accent card: a faint accent wash + slightly stronger lift, for the
            one "look here first" card on a screen. */
         .surface-card-accent {{
-            background: linear-gradient(180deg, {INDIGO}14, {INDIGO}0a) !important;
-            border-color: {INDIGO}40 !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 28px -14px {INDIGO}59;
+            background: linear-gradient(180deg, {alpha(INDIGO, '14')}, {alpha(INDIGO, '0a')}) !important;
+            border-color: {alpha(INDIGO, '40')} !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 28px -14px {alpha(INDIGO, '59')};
         }}
         /* Softer, rounder buttons (leave round/fab buttons circular). */
         .q-btn:not(.q-btn--round):not(.q-btn--fab) {{ border-radius: 12px; }}
@@ -319,7 +372,7 @@ def inject_theme():
         .q-field--outlined.q-field--focused .q-field__control:before {{
             border-color: {INDIGO};
             border-width: 2px;
-            box-shadow: 0 0 0 3px {INDIGO}22;
+            box-shadow: 0 0 0 3px {alpha(INDIGO, '22')};
         }}
         .q-field__native, .q-field__input {{ color: {TEXT} !important; }}
         .q-field__append .q-icon, .q-field__prepend .q-icon {{ color: {TEXT_DIM}; }}
@@ -337,7 +390,7 @@ def inject_theme():
         .q-item.q-router-link--active, .q-item--active {{ color: {INDIGO}; }}
         .q-item:hover {{ background: {SURFACE_2}; }}
         .q-item--active, .q-manual-focusable--focused > .q-focus-helper {{
-            background: {INDIGO}26 !important;
+            background: {alpha(INDIGO, '26')} !important;
         }}
 
         /* Calendar popup (date_field's ui.date) */
@@ -365,7 +418,7 @@ def inject_theme():
            the current page is indicated consistently with the bottom nav. */
         .drawer-nav-item {{ transition: color .15s, background .15s; }}
         .drawer-nav-item:hover {{ color: {TEXT} !important; background: {SURFACE_2}; }}
-        .drawer-nav-item.nav-active {{ color: {TEXT} !important; background: {INDIGO}22; }}
+        .drawer-nav-item.nav-active {{ color: {TEXT} !important; background: {alpha(INDIGO, '22')}; }}
 
         /* Segmented toggles (meal / type selectors) -- theme-aware; replaces
            Quasar's fixed dark/grey-5, which rendered dark boxes on light themes.
@@ -610,7 +663,7 @@ def page_header(title: str, subtitle: str = None, icon: str = None):
     with ui.row().classes("w-full items-center gap-3"):
         if icon:
             with ui.element("div").classes("flex items-center justify-center rounded-full shrink-0").style(
-                    f"width:2.5rem;height:2.5rem;background:{INDIGO}1f;"):
+                    f"width:2.5rem;height:2.5rem;background:{alpha(INDIGO, '1f')};"):
                 ui.icon(icon).classes("text-xl").style(f"color:{INDIGO}")
         with ui.column().classes("gap-0"):
             ui.label(title).classes("text-2xl font-bold leading-tight")
@@ -752,7 +805,7 @@ def badge(text: str, color: str = None):
     if color is None:  # resolve the live token, not the one baked at import
         color = TEXT_DIM
     ui.label(text).classes("text-xs px-2 py-0.5 rounded-full whitespace-nowrap font-medium").style(
-        f"background:{color}22; color:{color};"
+        f"background:{alpha(color, '22')}; color:{color};"
     )
 
 
@@ -762,7 +815,7 @@ def icon_chip(icon: str, color: str = None, size: str = "text-xl"):
     if color is None:  # resolve the live token, not the one baked at import
         color = INDIGO
     with ui.element("div").classes("flex items-center justify-center rounded-xl shrink-0").style(
-        f"background:{color}1f; width:2.25rem; height:2.25rem;"
+        f"background:{alpha(color, '1f')}; width:2.25rem; height:2.25rem;"
     ):
         ui.icon(icon).classes(size).style(f"color:{color}")
 
@@ -827,12 +880,12 @@ def ring_gauge(label: str, current: float, goal: float, unit: str, color: str, s
     goal_txt = f"of {goal:,.0f} {unit}" if goal else f"{unit} (no goal)"
     svg = f'''
       <svg viewBox="0 0 100 100" style="width:{size}px;height:{size}px">
-        <circle cx="50" cy="50" r="{r}" fill="none" stroke="{BORDER}" stroke-width="8"/>
-        <circle cx="50" cy="50" r="{r}" fill="none" stroke="{color}" stroke-width="8"
+        <circle cx="50" cy="50" r="{r}" fill="none" style="stroke:{BORDER}" stroke-width="8"/>
+        <circle cx="50" cy="50" r="{r}" fill="none" style="stroke:{color}" stroke-width="8"
                 stroke-linecap="round" stroke-dasharray="{dash:.2f} {circ - dash:.2f}"
                 transform="rotate(-90 50 50)"/>
-        <text x="50" y="47" text-anchor="middle" font-size="20" font-weight="700" fill="{TEXT}">{val}</text>
-        <text x="50" y="64" text-anchor="middle" font-size="10" fill="{TEXT_DIM}">{unit}</text>
+        <text x="50" y="47" text-anchor="middle" font-size="20" font-weight="700" style="fill:{TEXT}">{val}</text>
+        <text x="50" y="64" text-anchor="middle" font-size="10" style="fill:{TEXT_DIM}">{unit}</text>
       </svg>'''
     with ui.column().classes("items-center gap-0.5"):
         ui.html(svg)
@@ -1350,7 +1403,7 @@ def dashboard():
             with hdr:
                 badge(f"{'+' if saved_total >= 0 else '−'}{CUR}{abs(saved_total):,.0f} over 6 months",
                       EMERALD if saved_total >= 0 else RED)
-            ui.echart({
+            echart({
                 "backgroundColor": "transparent",
                 "grid": {"left": 55, "right": 55, "top": 30, "bottom": 28},
                 "legend": {"top": 0, "textStyle": {"color": TEXT_DIM, "fontSize": 10},
@@ -1581,7 +1634,7 @@ def render_expenses(container, period, ref_date, custom_range=None):
                 total_label.set_text(f"{CUR}{shown_total:,.2f}")
                 daily_avg_label.set_text(f"{CUR}{shown_total / num_days:,.2f}")
 
-            chart = ui.echart({
+            chart = echart({
                 "backgroundColor": "transparent",
                 "color": CHART_PALETTE,
                 "tooltip": {"trigger": "item"},
@@ -1655,7 +1708,7 @@ def render_amount_trend(container, model, date_col, title, icon, color, period, 
                     m, y = 1, y + 1
 
         rotate = 45 if len(labels) > 14 else 0
-        ui.echart({
+        echart({
             "backgroundColor": "transparent",
             "grid": {"left": 55, "right": 15, "top": 15, "bottom": 45 if rotate else 28},
             "xAxis": {
@@ -1724,7 +1777,7 @@ def render_income_summary(container, period, ref_date):
 
         if by_source:
             sorted_items = sorted(by_source.items(), key=lambda x: -x[1])
-            ui.echart({
+            echart({
                 "backgroundColor": "transparent",
                 "color": CHART_PALETTE,
                 "tooltip": {"trigger": "item"},
@@ -1786,7 +1839,7 @@ def render_nutrition(container, period, ref_date, goals, custom_range=None):
         if entries:
             macro_goals = [goals.protein_g or 0, goals.carbs_g or 0, goals.fat_g or 0]
             macro_actuals = [round(averages["protein_g"], 1), round(averages["carbs_g"], 1), round(averages["fat_g"], 1)]
-            ui.echart({
+            echart({
                 "backgroundColor": "transparent",
                 "color": [INDIGO, SURFACE_2],
                 "grid": {"left": 55, "right": 20, "top": 30, "bottom": 20},
@@ -3172,7 +3225,7 @@ def render_add_food_form(on_saved=None):
             _out_cats = {c.id: c.name for c in _s.exec(select(Category)).all()
                          if c.name in ("Eating Out", "Groceries")}
         _default_out_cat = next((cid for cid, n in _out_cats.items() if n == "Eating Out"), None)
-        with ui.column().classes("w-full gap-1 mt-1 pl-3 border-l-2").style(f"border-color:{INDIGO}55") as out_spend_section:
+        with ui.column().classes("w-full gap-1 mt-1 pl-3 border-l-2").style(f"border-color:{alpha(INDIGO, '55')}") as out_spend_section:
             ui.label("Also log the spend").classes("text-xs").style(f"color:{TEXT_DIM}")
             with ui.row().classes("w-full items-end gap-2 flex-wrap"):
                 out_amount = ui.number(label="Amount", format="%.2f").props(f'prefix="{CUR}" dense').classes("w-28")
@@ -3638,7 +3691,7 @@ def pantry_page():
 
         expiring = [i for i in items if i.expiration_date and (i.expiration_date - date.today()).days <= 7]
         if expiring:
-            with card_box().classes("w-full gap-2").style(f"border-color:{AMBER}66"):
+            with card_box().classes("w-full gap-2").style(f"border-color:{alpha(AMBER, '66')}"):
                 section_header("Expiring soon", icon="warning_amber", icon_color=AMBER, accent=AMBER)
                 for i in sorted(expiring, key=lambda x: x.expiration_date):
                     with ui.row().classes("w-full items-center justify-between gap-2"):
@@ -4006,7 +4059,7 @@ def prices_page():
                         "Each item rebased to 100 at its first logged price -- lines rising above "
                         "100 have gotten more expensive, in percentage terms."
                     ).classes("text-xs mb-2").style(f"color:{TEXT_DIM}")
-                    ui.echart({
+                    echart({
                         "backgroundColor": "transparent",
                         "grid": {"left": 45, "right": 20, "top": 40, "bottom": 40},
                         "legend": {"textStyle": {"color": TEXT_DIM, "fontSize": 11}, "top": 0, "type": "scroll"},
@@ -4043,7 +4096,7 @@ def prices_page():
 
                         dates = [o.date.isoformat() for o in obs]
                         prices = [o.price for o in obs]
-                        ui.echart({
+                        echart({
                             "backgroundColor": "transparent",
                             "grid": {"left": 50, "right": 20, "top": 20, "bottom": 40},
                             "xAxis": {
@@ -4211,7 +4264,7 @@ def forecast_page():
 
                 months_list = [w["month"] for w in result["weight_series"]]
                 weights = [w["projected_weight_kg"] for w in result["weight_series"]]
-                ui.echart({
+                echart({
                     "backgroundColor": "transparent",
                     "grid": {"left": 50, "right": 20, "top": 20, "bottom": 30},
                     "xAxis": {
@@ -4266,7 +4319,7 @@ def forecast_page():
                         "lineStyle": {"color": TEXT_DIM, "width": 2, "type": "dashed"},
                         "itemStyle": {"color": TEXT_DIM},
                     })
-                ui.echart({
+                echart({
                     "backgroundColor": "transparent",
                     "grid": {"left": 60, "right": 20, "top": 20, "bottom": 30},
                     "xAxis": {
@@ -4410,7 +4463,7 @@ def profile_page():
                 dates = [p["date"].isoformat() for p in trend["points"]]
                 raw = [p["raw_weight_kg"] for p in trend["points"]]
                 smoothed = [p["rolling_avg_kg"] for p in trend["points"]]
-                ui.echart({
+                echart({
                     "backgroundColor": "transparent",
                     "grid": {"left": 50, "right": 20, "top": 20, "bottom": 40},
                     "xAxis": {
@@ -5678,7 +5731,7 @@ def accounts_page():
             with card_box().classes("w-full"):
                 section_header("Net worth trend", icon="show_chart", icon_color=EMERALD,
                                subtitle="Snapshotted once a day as you update balances")
-                ui.echart({
+                echart({
                     "backgroundColor": "transparent",
                     "grid": {"left": 60, "right": 15, "top": 15, "bottom": 28},
                     "xAxis": {"type": "category", "data": [dt.strftime("%d %b") for (dt, nw) in snaps],

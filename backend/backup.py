@@ -140,5 +140,11 @@ def _loop() -> None:
 
 
 def start_scheduler() -> None:
-    """Start the background backup thread. Safe to call once per process."""
+    """Start the background backup thread. Safe to call once per process.
+
+    Skipped when BALANCE_NO_BACKUP is set: a sandbox run on a throwaway
+    database (BALANCE_DB) would otherwise snapshot that database into the real
+    backups folder -- and prune the real backups to make room for it."""
+    if os.environ.get("BALANCE_NO_BACKUP"):
+        return
     threading.Thread(target=_loop, daemon=True, name="balance-backup").start()

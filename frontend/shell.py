@@ -488,6 +488,30 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   border-top: 1px solid var(--b-border); }
 .b-you .b-pill .q-icon { font-size: 17px; }
 
+/* Import: steps, drop zone, review rows. */
+.b-steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.b-step { display: flex; align-items: center; gap: 7px; padding: 5px 12px 5px 5px; border-radius: 999px;
+  background: var(--b-surface); border: 1px solid var(--b-border); color: var(--b-text-dim);
+  font-size: 13px; font-weight: 650; }
+.b-step .n { width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; background: var(--b-surface-2); }
+.b-step .n .q-icon { font-size: 15px; }
+.b-step.now { color: var(--b-text); border-color: var(--b-indigo); }
+.b-step.now .n { background: var(--q-primary); color: #fff; }
+.b-step.done .n { background: color-mix(in srgb, var(--b-emerald) 22%, transparent); color: var(--b-emerald); }
+@media (max-width: 640px) { .b-step:not(.now) .t { display: none; } .b-step:not(.now) { padding-right: 5px; } }
+.b-drop { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 40px 20px; border: 2px dashed var(--b-border); border-radius: 22px; cursor: pointer;
+  background: var(--b-surface); text-align: center; transition: border-color .15s, background .15s; }
+.b-drop:hover, .b-drop.over { border-color: var(--b-indigo);
+  background: color-mix(in srgb, var(--b-indigo) 8%, var(--b-surface)); }
+.b-drop-icon { font-size: 40px; color: var(--b-indigo); margin-bottom: 6px; }
+.b-drop-title { font-size: 17px; font-weight: 750; color: var(--b-text); }
+.b-drop-sub { font-size: 13px; color: var(--b-text-dim); }
+.b-imp { align-items: flex-start; padding-top: 6px; padding-bottom: 6px; }
+.b-imp-desc input { font-weight: 650; }
+.b-imp-date input { font-size: 12.5px; color: var(--b-text-dim); }
+
 /* Quick-add sheet */
 .b-addsheet { width: min(560px, 100vw); max-width: 100vw !important; max-height: 88vh;
   border-radius: 22px 22px 0 0 !important; padding: 0 !important; overflow: hidden;

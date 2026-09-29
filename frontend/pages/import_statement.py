@@ -21,29 +21,48 @@ from backend.services.statement_import import (
     parse_pdf_lines,
 )
 
-from ..common import _category_label, _read_upload_bytes
+from ..common import CUR, _category_label, _read_upload_bytes
 from ..components import (
+    badge,
     card_box,
+    card_box_accent,
     page_header,
     section_header,
     segmented,
+    summary_strip,
 )
 from ..theme import (
-    BORDER,
+    AMBER,
     EMERALD,
     INDIGO,
+    LIST_GROUP,
     RED,
     TEXT_DIM,
 )
+
+STEPS = ["Upload", "Match columns", "Review", "Done"]
+
+
+def _steps(current):
+    """Where you are in the import: done steps ticked, this one highlighted."""
+    with ui.element("div").classes("b-steps"):
+        for i, name in enumerate(STEPS):
+            state = "done" if i < current else "now" if i == current else ""
+            with ui.element("div").classes(f"b-step {state}"):
+                with ui.element("span").classes("n"):
+                    if i < current:
+                        ui.icon("check")
+                    else:
+                        ui.label(str(i + 1))
+                ui.label(name).classes("t")
 
 
 # ---------------------------------------------------------------------------
 # Import bank statement (CSV or PDF)
 # ---------------------------------------------------------------------------
 def import_statement_page():
-    page_header("Import Statement",
-                "Bring in a CSV or PDF bank statement — nothing saves until you review and confirm.",
-                icon="upload_file")
+    page_header("Import a statement",
+                "Bring in a CSV or PDF from your bank -- nothing is saved until you've reviewed it.")
 
     step_container = ui.column().classes("w-full gap-4")
     state = {
@@ -61,54 +80,70 @@ def import_statement_page():
     def render_upload_step():
         step_container.clear()
         with step_container:
-            with card_box().classes("w-full max-w-xl"):
-                section_header("1. Upload a file", icon="upload_file", icon_color=INDIGO)
-                upload_status = ui.label().classes("text-xs")
+            _steps(0)
+            # A hidden uploader does the work; the drop zone drives it from the
+            # browser directly (a tap has to stay a real tap for phones to open
+            # the file picker), and hands it files dropped onto the zone.
+            uploader = ui.upload(on_upload=lambda e: handle_upload(e), auto_upload=True, max_files=1).props(
+                'accept=".csv,.pdf"').classes("b-off")
+            pick = "() => getElement(%d).$refs.qRef.pickFiles()" % uploader.id
+            drop = ("(e) => { e.currentTarget.classList.remove('over'); "
+                    "getElement(%d).$refs.qRef.addFiles(e.dataTransfer.files); }" % uploader.id)
+            zone = ui.element("div").classes("b-drop")
+            zone.on("click", js_handler=pick)
+            zone.on("dragover.prevent", js_handler="(e) => e.currentTarget.classList.add('over')")
+            zone.on("dragleave", js_handler="(e) => e.currentTarget.classList.remove('over')")
+            zone.on("drop.prevent", js_handler=drop)
+            with zone:
+                ui.icon("upload_file").classes("b-drop-icon")
+                ui.label("Choose a statement").classes("b-drop-title")
+                ui.label("CSV or PDF · or drag it here").classes("b-drop-sub")
+            upload_status = ui.label().classes("text-sm")
+            ui.label("Most banks let you download a statement as CSV from their website or app -- that gives "
+                     "the cleanest import. PDFs work too: Balance picks out the lines that look like a date "
+                     "next to an amount.").classes("b-hint").style("margin:0")
 
-                async def handle_upload(e):
-                    upload_status.set_text("Reading file...")
-                    upload_status.style(f"color:{TEXT_DIM}")
-                    try:
-                        file_bytes = await _read_upload_bytes(e)
-                        filename = (getattr(e, "file", None) or e)
-                        filename = getattr(filename, "name", "") or ""
-                    except Exception as exc:
-                        upload_status.set_text(f"Couldn't read that file: {exc}")
-                        upload_status.style(f"color:{RED}")
-                        return
-
-                    try:
-                        if filename.lower().endswith(".pdf"):
-                            state["source_type"] = "pdf"
-                            text = extract_pdf_text(file_bytes)
-                            state["table"] = parse_pdf_lines(text)
-                            if not state["table"]:
-                                raise StatementImportError(
-                                    "Couldn't find any lines that look like transactions "
-                                    "(a date next to an amount) in this PDF."
-                                )
-                        else:
-                            state["source_type"] = "csv"
-                            state["table"] = parse_csv(file_bytes)
-                    except StatementImportError as exc:
-                        upload_status.set_text(str(exc))
-                        upload_status.style(f"color:{RED}")
-                        return
-                    except Exception as exc:
-                        upload_status.set_text(f"Couldn't process that file: {exc}")
-                        upload_status.style(f"color:{RED}")
-                        return
-
-                    render_mapping_step()
-
-                ui.upload(on_upload=handle_upload, auto_upload=True, max_files=1).props(
-                    'accept=".csv,.pdf"'
-                ).classes("max-w-full")
+        async def handle_upload(e):
+            upload_status.set_text("Reading the file…")
+            upload_status.style(f"color:{TEXT_DIM}")
+            try:
+                file_bytes = await _read_upload_bytes(e)
+                filename = (getattr(e, "file", None) or e)
+                filename = getattr(filename, "name", "") or ""
+            except Exception as exc:
+                upload_status.set_text(f"Couldn't read that file: {exc}")
+                upload_status.style(f"color:{RED}")
+                return
+            try:
+                if filename.lower().endswith(".pdf"):
+                    state["source_type"] = "pdf"
+                    state["table"] = parse_pdf_lines(extract_pdf_text(file_bytes))
+                    if not state["table"]:
+                        raise StatementImportError(
+                            "Couldn't find any lines that look like transactions "
+                            "(a date next to an amount) in this PDF."
+                        )
+                else:
+                    state["source_type"] = "csv"
+                    state["table"] = parse_csv(file_bytes)
+            except StatementImportError as exc:
+                upload_status.set_text(str(exc))
+                upload_status.style(f"color:{RED}")
+                uploader.reset()
+                return
+            except Exception as exc:
+                upload_status.set_text(f"Couldn't process that file: {exc}")
+                upload_status.style(f"color:{RED}")
+                uploader.reset()
+                return
+            state["filename"] = filename
+            render_mapping_step()
 
     # -----------------------------------------------------------------
     def render_mapping_step():
         step_container.clear()
         with step_container:
+            _steps(1)
             if state["source_type"] == "csv":
                 render_csv_mapping()
             else:
@@ -118,8 +153,9 @@ def import_statement_page():
         headers = state["table"]["headers"]
         header_options = {i: h for i, h in enumerate(headers)}
 
-        with card_box().classes("w-full max-w-2xl"):
-            section_header("2. Match up the columns", icon="view_column", icon_color=INDIGO)
+        with card_box().classes("w-full"):
+            section_header("Which column is which?",
+                           subtitle=f"{state.get('filename') or 'Your file'} · {len(state['table']['rows'])} rows")
             with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1"):
                 date_col = ui.select(header_options, label="Date column").props("dense options-dense").classes("w-full")
                 date_format = ui.select(list(DATE_FORMATS.keys()), value="DD/MM/YYYY", label="Date format").props("dense options-dense").classes("w-full")
@@ -158,7 +194,6 @@ def import_statement_page():
                     return
 
                 candidates = []
-                day_first = date_format.value in ("DD/MM/YYYY", "DD-MM-YYYY", "DD.MM.YYYY")
                 for row in state["table"]["rows"]:
                     d = parse_date_with_format(row[date_col.value], date_format.value)
                     if not d:
@@ -191,12 +226,13 @@ def import_statement_page():
 
             with ui.row().classes("w-full justify-between mt-2"):
                 ui.button("Back", on_click=render_upload_step).props("flat dense no-caps")
-                ui.button("Continue", on_click=build_candidates).props("color=primary unelevated")
+                ui.button("Continue", icon="arrow_forward", on_click=build_candidates).props(
+                    "color=primary unelevated no-caps")
 
     def render_pdf_mapping():
         line_candidates = state["table"]
-        with card_box().classes("w-full max-w-2xl"):
-            section_header("2. Confirm date format", icon="event", icon_color=INDIGO)
+        with card_box().classes("w-full"):
+            section_header("Check the dates", subtitle=state.get("filename") or "Your PDF")
             ui.label(
                 f"Found {len(line_candidates)} line(s) that look like transactions (a date next to "
                 "an amount). You'll review and can exclude any that aren't real transactions on the next screen."
@@ -226,7 +262,8 @@ def import_statement_page():
 
             with ui.row().classes("w-full justify-between mt-2"):
                 ui.button("Back", on_click=render_upload_step).props("flat dense no-caps")
-                ui.button("Continue", on_click=build_candidates).props("color=primary unelevated")
+                ui.button("Continue", icon="arrow_forward", on_click=build_candidates).props(
+                    "color=primary unelevated no-caps")
 
     # -----------------------------------------------------------------
     def render_preview_step():
@@ -251,112 +288,109 @@ def import_statement_page():
             c["category_id"] = guess if guess is not None else default_category
 
         with step_container:
-            with card_box().classes("w-full"):
-                section_header("3. Review before importing", icon="fact_check", icon_color=INDIGO)
-                num_dupes = sum(1 for c in state["candidates"] if c["is_duplicate"])
-                num_expense = sum(1 for c in state["candidates"] if not c["is_income"])
-                num_income = sum(1 for c in state["candidates"] if c["is_income"])
-                ui.label(
-                    f"{len(state['candidates'])} row(s) found: {num_expense} expense, {num_income} income. "
-                    f"{num_dupes} look like duplicates of transactions you already have and are unchecked below."
-                ).classes("text-xs mb-2").style(f"color:{TEXT_DIM}")
+            _steps(2)
+            num_dupes = sum(1 for c in state["candidates"] if c["is_duplicate"])
+            summary_strip([
+                ("Found", str(len(state["candidates"])), INDIGO),
+                ("Expenses", str(sum(1 for c in state["candidates"] if not c["is_income"])), AMBER),
+                ("Income", str(sum(1 for c in state["candidates"] if c["is_income"])), EMERALD),
+                ("Look like duplicates", str(num_dupes), RED, "left unticked") if num_dupes else None,
+            ])
+            ui.label("Everything below can be edited -- fix anything the file got wrong, and untick rows you "
+                     "don't want.").classes("b-hint").style("margin:0")
 
-                ui.label(
-                    "Every field below is editable -- fix anything the parser got wrong before importing."
-                ).classes("text-xs mb-2").style(f"color:{TEXT_DIM}")
-
-                rows_container = ui.column().classes("w-full gap-1")
-                row_cat_selects = []  # (candidate, select) pairs, for "apply to all" + income toggling
-                with rows_container:
-                    for c in state["candidates"]:
-                        with ui.row().classes("w-full items-center gap-2 py-2 flex-wrap border-b").style(f"border-color:{BORDER}"):
-                            checkbox = ui.checkbox(value=c["include"])
-                            checkbox.on_value_change(lambda e, cc=c: cc.update({"include": e.value}))
-
-                            date_input = ui.input(value=c["date"].isoformat()).props("dense").classes("w-28")
-
-                            def on_date_change(e, cc=c):
-                                try:
-                                    cc["date"] = date.fromisoformat(e.value)
-                                except ValueError:
-                                    pass  # leave the previous value if what they typed isn't a real date
-
-                            date_input.on_value_change(on_date_change)
-
-                            desc_input = ui.input(value=c["description"]).props("dense").classes("flex-grow min-w-[140px]")
+            row_cat_selects = []  # (candidate, select) pairs, for "set every expense" + income toggling
+            with ui.column().classes(LIST_GROUP):
+                for c in state["candidates"]:
+                    with ui.element("div").classes("b-row b-imp").style("cursor:default"):
+                        checkbox = ui.checkbox(value=c["include"]).props("color=primary")
+                        checkbox.on_value_change(lambda e, cc=c: cc.update({"include": e.value}))
+                        with ui.column().classes("flex-1 min-w-0 gap-1"):
+                            desc_input = ui.input(value=c["description"]).props("dense borderless").classes(
+                                "w-full b-imp-desc")
                             desc_input.on_value_change(lambda e, cc=c: cc.update({"description": e.value}))
+                            with ui.row().classes("w-full items-center gap-2"):
+                                amount_input = ui.number(value=c["amount"], format="%.2f").props(
+                                    f'dense borderless prefix="{CUR}" input-class="font-bold"').classes("w-28")
+                                amount_input.on_value_change(lambda e, cc=c: cc.update({"amount": e.value or 0}))
+                                date_input = ui.input(value=c["date"].isoformat()).props("dense borderless").classes(
+                                    "w-28 b-imp-date")
 
-                            amount_input = ui.number(value=c["amount"], format="%.2f").props("dense").classes("w-24")
-                            amount_input.on_value_change(lambda e, cc=c: cc.update({"amount": e.value or 0}))
+                                def on_date_change(e, cc=c):
+                                    try:
+                                        cc["date"] = date.fromisoformat(e.value)
+                                    except ValueError:
+                                        pass  # keep the previous value until it's a real date
 
-                            direction_toggle = ui.toggle(
-                                ["Expense", "Income"], value="Income" if c["is_income"] else "Expense"
-                            ).props("dense toggle-color=primary")
+                                date_input.on_value_change(on_date_change)
+                                direction = ui.toggle(["Expense", "Income"],
+                                                      value="Income" if c["is_income"] else "Expense").props(
+                                    "dense no-caps unelevated toggle-color=primary").classes("seg-toggle text-xs")
+                                cat_select = ui.select(category_options, value=c["category_id"], with_input=True).props(
+                                    "dense options-dense borderless").classes("w-44")
+                                cat_select.on_value_change(lambda e, cc=c: cc.update({"category_id": e.value}))
+                                cat_select.set_visibility(not c["is_income"])  # income has a source, not a category
+                                row_cat_selects.append((c, cat_select))
 
-                            cat_select = ui.select(
-                                category_options, value=c["category_id"], with_input=True,
-                            ).props("dense options-dense").classes("w-44")
-                            cat_select.on_value_change(lambda e, cc=c: cc.update({"category_id": e.value}))
-                            cat_select.set_visibility(not c["is_income"])  # income uses source, not category
-                            row_cat_selects.append((c, cat_select))
+                                def on_direction(e, cc=c, sel=cat_select):
+                                    cc["is_income"] = e.value == "Income"
+                                    sel.set_visibility(not cc["is_income"])
+                                direction.on_value_change(on_direction)
+                                if c["is_duplicate"]:
+                                    badge("Possible duplicate", RED)
 
-                            def on_direction(e, cc=c, sel=cat_select):
-                                cc["is_income"] = e.value == "Income"
-                                sel.set_visibility(not cc["is_income"])
-                            direction_toggle.on_value_change(on_direction)
+            with ui.row().classes("w-full items-end gap-2"):
+                bulk_category_select = ui.select(
+                    category_options, value=default_category, label="Set every expense to…", with_input=True,
+                ).props("dense options-dense").classes("w-64")
 
-                            if c["is_duplicate"]:
-                                ui.label("possible duplicate").classes("text-xs").style(f"color:{TEXT_DIM}")
+                def apply_to_all():
+                    v = bulk_category_select.value
+                    for cc, sel in row_cat_selects:
+                        cc["category_id"] = v
+                        sel.value = v
+                ui.button("Apply", on_click=apply_to_all).props("flat dense no-caps color=primary")
 
-                with ui.row().classes("items-center gap-2 mb-2 mt-2"):
-                    bulk_category_select = ui.select(
-                        category_options, value=default_category, label="Set all expenses to…", with_input=True,
-                    ).props("dense options-dense").classes("w-64")
+            result_label = ui.label()
 
-                    def apply_to_all():
-                        v = bulk_category_select.value
-                        for cc, sel in row_cat_selects:
-                            cc["category_id"] = v
-                            sel.value = v
-                    ui.button("Apply to all", on_click=apply_to_all).props("flat dense no-caps")
+            def do_import():
+                to_import = [c for c in state["candidates"] if c["include"]]
+                if not to_import:
+                    result_label.set_text("Nothing ticked to import.")
+                    result_label.style(f"color:{RED}")
+                    return
+                created_tx, created_inc = [], []
+                with Session(engine) as session:
+                    for c in to_import:
+                        if c["is_income"]:
+                            entry = Income(date=c["date"], amount=c["amount"], source="Other",
+                                           payer=c["description"][:200], notes="Imported from statement")
+                        else:
+                            entry = Transaction(date=c["date"], amount=c["amount"], merchant=c["description"][:200],
+                                                category_id=c["category_id"], notes="Imported from statement")
+                        session.add(entry)
+                        session.commit()
+                        session.refresh(entry)
+                        (created_inc if c["is_income"] else created_tx).append(entry.id)
+                state["created_ids"] = {"transactions": created_tx, "income": created_inc}
+                render_success_step(len(created_tx), len(created_inc))
 
-                result_label = ui.label().classes("mt-2")
-
-                def do_import():
-                    to_import = [c for c in state["candidates"] if c["include"]]
-                    if not to_import:
-                        result_label.set_text("Nothing selected to import.")
-                        result_label.style(f"color:{RED}")
-                        return
-                    created_tx, created_inc = [], []
-                    with Session(engine) as session:
-                        for c in to_import:
-                            if c["is_income"]:
-                                entry = Income(date=c["date"], amount=c["amount"], source="Other", payer=c["description"][:200], notes="Imported from statement")
-                                session.add(entry)
-                                session.commit()
-                                session.refresh(entry)
-                                created_inc.append(entry.id)
-                            else:
-                                entry = Transaction(date=c["date"], amount=c["amount"], merchant=c["description"][:200], category_id=c["category_id"], notes="Imported from statement")
-                                session.add(entry)
-                                session.commit()
-                                session.refresh(entry)
-                                created_tx.append(entry.id)
-                    state["created_ids"] = {"transactions": created_tx, "income": created_inc}
-                    render_success_step(len(created_tx), len(created_inc))
-
-                with ui.row().classes("w-full justify-between mt-2"):
-                    ui.button("Back", on_click=render_upload_step).props("flat dense no-caps")
-                    ui.button("Import selected", on_click=do_import).props("color=primary unelevated")
+            with ui.row().classes("w-full items-center justify-between"):
+                ui.button("Start again", icon="arrow_back", on_click=render_upload_step).props("flat dense no-caps")
+                ui.button("Import ticked rows", icon="download_done", on_click=do_import).props(
+                    "color=primary unelevated no-caps")
 
     # -----------------------------------------------------------------
     def render_success_step(num_tx, num_inc):
         step_container.clear()
         with step_container:
-            with card_box().classes("w-full max-w-xl"):
-                ui.label("Imported").classes("text-lg font-semibold mb-1").style(f"color:{EMERALD}")
-                ui.label(f"Added {num_tx} transaction(s) and {num_inc} income entr{'y' if num_inc == 1 else 'ies'}.").classes("text-sm mb-2")
+            _steps(3)
+            with card_box_accent().classes("w-full gap-3"):
+                section_header("Imported", subtitle="Each one is marked \u201cImported from statement\u201d in its notes.")
+                summary_strip([
+                    ("Transactions", str(num_tx), AMBER),
+                    ("Income", str(num_inc), EMERALD),
+                ])
 
                 def undo_import():
                     with Session(engine) as session:
@@ -373,9 +407,11 @@ def import_statement_page():
                     ui.notify("Import undone.", type="warning")
                     render_upload_step()
 
-                with ui.row().classes("gap-2"):
-                    ui.button("Undo this import", icon="undo", on_click=undo_import).props("flat dense no-caps color=red")
-                    ui.link("View Transactions", "/transactions").classes("no-underline").style(f"color:{INDIGO}")
-                    ui.button("Import another file", on_click=render_upload_step).props("flat dense no-caps")
+                with ui.row().classes("w-full items-center gap-2"):
+                    ui.button("See transactions", icon="receipt_long",
+                              on_click=lambda: ui.navigate.to("/transactions")).props("unelevated no-caps color=primary")
+                    ui.button("Import another", on_click=render_upload_step).props("flat no-caps color=primary")
+                    ui.space()
+                    ui.button("Undo this import", icon="undo", on_click=undo_import).props("flat no-caps color=negative")
 
     render_upload_step()

@@ -7,7 +7,7 @@ from sqlmodel import Session
 from backend.database import engine
 from backend.routers.forecast import compute_forecast
 
-from ..common import CUR
+from ..common import CUR, set_page_refresh
 from ..components import (
     card_box,
     card_box_accent,
@@ -166,3 +166,4 @@ def forecast_page():
                 ).classes("b-hint").style("margin:4px 0 0")
 
     render()
+    set_page_refresh(render)   # adding from the + sheet redraws it

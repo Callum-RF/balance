@@ -29,6 +29,7 @@ from ..common import (
     open_add,
     previous_window,
     resolve_window,
+    set_page_refresh,
 )
 from ..components import (
     badge,
@@ -64,6 +65,14 @@ from ..theme import (
 # Dashboard
 # ---------------------------------------------------------------------------
 def dashboard():
+    """The home page. Wrapped in a refreshable so adding something from the +
+    sheet redraws it in place (see common.set_page_refresh)."""
+    body = ui.refreshable(_dashboard_body)
+    body()
+    set_page_refresh(body.refresh)
+
+
+def _dashboard_body():
     today = date.today()
     now = datetime.now()
     yesterday = today - timedelta(days=1)

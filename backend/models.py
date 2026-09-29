@@ -507,7 +507,7 @@ class ShoppingListItem(SQLModel, table=True):
     name: str
     quantity_note: Optional[str] = None   # free text, e.g. "2", "500g", "a dozen"
     note: Optional[str] = None
-    location: str = "pantry"              # where it goes when bought: fridge/freezer/pantry
+    location: str = "pantry"              # where it goes when bought: fridge/freezer/pantry, or misc (not food)
     done: bool = False
     source: str = "manual"                # manual / pantry / recurring
     created_at: datetime = Field(default_factory=utcnow)

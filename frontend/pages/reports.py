@@ -6,7 +6,7 @@ from sqlmodel import Session
 
 from backend.database import engine
 
-from ..common import CUR, category_style
+from ..common import CUR, category_style, set_page_refresh
 from ..components import (
     bar_row,
     card_box,
@@ -123,3 +123,4 @@ def reports_page():
                     ])
 
     render()
+    set_page_refresh(render)   # adding from the + sheet redraws it

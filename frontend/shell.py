@@ -388,6 +388,10 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   text-overflow: ellipsis; }
 .b-row-value { font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums;
   white-space: nowrap; color: var(--b-text); }
+.b-row-end { display: flex; align-items: center; gap: 6px; flex: none; color: var(--b-text-dim);
+  font-size: 13.5px; }
+.b-row-end .q-toggle { margin-right: -6px; }
+.b-hint { font-size: 12.5px; color: var(--b-text-dim); margin: 6px 4px 0; line-height: 1.45; }
 .b-day { display: flex; align-items: baseline; justify-content: space-between; width: 100%;
   margin: 16px 2px 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--b-text-dim); }

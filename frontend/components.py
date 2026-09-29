@@ -449,3 +449,26 @@ def period_pills(on_change, value: str = "monthly"):
 
     pill_toggle(SUMMARY_PERIODS, value, changed)
     return lambda: state["value"]
+
+
+@contextmanager
+def setting_row(icon: str, color: str, title: str, sub: str = None, on_click=None):
+    """A settings-list row: tinted icon, title and one line of detail, and a
+    slot on the right for its control (a switch, a select, a value). Rows with
+    `on_click` open something and show a chevron instead. Yields the detail
+    label (None without `sub`) so a caller can update it later."""
+    row = ui.element("div").classes("b-row")
+    if on_click:
+        row.on("click", on_click)
+    else:
+        row.style("cursor:default")
+    with row:
+        with ui.element("div").classes("b-row-icon").style(f"background:{alpha(color, '22')}; color:{color}"):
+            ui.icon(icon)
+        with ui.element("div").classes("b-row-text"):
+            ui.label(title).classes("b-row-title")
+            sub_label = ui.label(sub).classes("b-row-sub") if sub else None
+        with ui.element("div").classes("b-row-end"):
+            yield sub_label
+            if on_click:
+                ui.icon("chevron_right").classes("text-xl").style(f"color:{TEXT_DIM}")

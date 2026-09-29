@@ -64,7 +64,7 @@ ROUTE_MODULE["/add-income"] = "income"
 # Pages that use the full 1240px frame (dashboards, charts, list + summary
 # side by side). Everything else is mostly a list or a form, and sits in a
 # centred reading-width column.
-WIDE_ROUTES = {"/", "/transactions", "/income", "/forecast", "/reports"}
+WIDE_ROUTES = {"/", "/transactions", "/income", "/food-log", "/forecast", "/reports"}
 
 
 def _fresh_page(page_fn, route):

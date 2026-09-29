@@ -450,6 +450,13 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 }
 
 /* Dashboard */
+.b-dash-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; width: 100%; }
+.b-streakline { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600;
+  color: var(--b-text); }
+.b-trendlink { display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 650;
+  color: var(--b-indigo); text-decoration: none; }
+.b-trendlink .q-icon { font-size: 17px; transition: transform .15s; }
+.b-trendlink:hover .q-icon { transform: translateX(3px); }
 .b-budget { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: -2px; }
 .b-budget-cap { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px;
   color: var(--b-text-dim); }

@@ -27,6 +27,7 @@ from ..components import (
     form_frame,
     list_row,
     page_header,
+    period_pills,
     pill_toggle,
     section_header,
     segmented,
@@ -36,6 +37,7 @@ from ..components import (
 from ..theme import (
     AMBER,
     BORDER,
+    CARD,
     EMERALD,
     INDIGO,
     LIST_GROUP,
@@ -43,6 +45,7 @@ from ..theme import (
     TEXT_DIM,
     alpha,
 )
+from .dashboard import render_nutrition
 
 
 # ---------------------------------------------------------------------------
@@ -327,17 +330,29 @@ def food_log_page():
     figures()
     state = {"meal": None}
 
-    # --- toolbar: search and meal pills ---
-    with ui.element("div").classes("b-toolbar mt-1"):
-        search_input = ui.input(placeholder="Search food or tag").props(
-            "dense outlined clearable debounce=300").classes("b-field")
-        with search_input.add_slot("prepend"):
-            ui.icon("search").classes("text-lg").style(f"color:{TEXT_DIM}")
-    pill_toggle({k or "all": v for k, v in MEALS.items()}, "all",
-                lambda k: (state.update(meal=None if k == "all" else k), refresh()))
-    result_summary = ui.label().classes("b-count")
-    undo_container = ui.column().classes("w-full")
-    list_container = ui.column().classes("w-full gap-0")
+    def switch_view(key):
+        # Only on narrower screens: from 1200px the summary sits beside the log.
+        log_view.classes(remove="b-off") if key == "log" else log_view.classes(add="b-off")
+        summary_view.classes(remove="b-off") if key == "summary" else summary_view.classes(add="b-off")
+
+    with ui.element("div").classes("b-split-pills"):
+        pill_toggle({"log": "Log", "summary": "Summary"}, "log", switch_view)
+    with ui.element("div").classes("b-split"):
+        log_view = ui.column().classes("w-full gap-2 mt-2")
+        summary_view = ui.column().classes("w-full gap-3 mt-2 b-off")
+
+    with log_view:
+        # --- toolbar: search and meal pills ---
+        with ui.element("div").classes("b-toolbar"):
+            search_input = ui.input(placeholder="Search food or tag").props(
+                "dense outlined clearable debounce=300").classes("b-field")
+            with search_input.add_slot("prepend"):
+                ui.icon("search").classes("text-lg").style(f"color:{TEXT_DIM}")
+        pill_toggle({k or "all": v for k, v in MEALS.items()}, "all",
+                    lambda k: (state.update(meal=None if k == "all" else k), refresh()))
+        result_summary = ui.label().classes("b-count")
+        undo_container = ui.column().classes("w-full")
+        list_container = ui.column().classes("w-full gap-0")
 
     def query_food():
         with Session(engine) as session:
@@ -485,4 +500,21 @@ def food_log_page():
 
     search_input.on_value_change(lambda e: refresh())
     refresh()
-    set_page_refresh(refresh_all)
+
+    # --- Summary: nutrition over a period (what the dashboard's Overview used to show) ---
+    with summary_view:
+        period = period_pills(lambda: refresh_summary())
+        nutrition_container = ui.column().classes(CARD)
+
+        def refresh_summary():
+            with Session(engine) as s:
+                goals = s.exec(select(NutrientGoals)).first() or NutrientGoals()
+            render_nutrition(nutrition_container, period(), date.today(), goals)
+
+        refresh_summary()
+
+    def refresh_page():
+        refresh_all()
+        refresh_summary()
+
+    set_page_refresh(refresh_page)

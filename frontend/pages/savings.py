@@ -34,6 +34,7 @@ from ..theme import (
     TEXT_DIM,
     VIOLET,
 )
+from .dashboard import render_monthly_net
 
 
 def savings_page():
@@ -78,6 +79,7 @@ def savings_page():
             ("Target", f"{CUR}{total_target:,.0f} · {len(goals)} goal{'s' if len(goals) != 1 else ''}", INDIGO),
             ("Overall progress", f"{min(total_saved / total_target * 100, 100):.0f}%", AMBER) if total_target else None,
         ])
+        render_monthly_net()
 
         def _contribute(gid, amount):
             with Session(engine) as session:

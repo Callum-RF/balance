@@ -1,5 +1,5 @@
 """The food page."""
-from datetime import date
+from datetime import date, datetime
 
 from nicegui import ui
 from sqlmodel import Session, select
@@ -19,6 +19,7 @@ from ..common import (
     TAG_OPTIONS,
     format_date_header,
     group_by_date,
+    open_add,
     set_page_refresh,
 )
 from ..components import (
@@ -35,12 +36,12 @@ from ..components import (
     undo_banner,
 )
 from ..theme import (
-    AMBER,
     BORDER,
     CARD,
     EMERALD,
     INDIGO,
     LIST_GROUP,
+    RED,
     SURFACE,
     TEXT_DIM,
     alpha,
@@ -51,7 +52,13 @@ from .dashboard import render_nutrition
 # ---------------------------------------------------------------------------
 # Add / list food log
 # ---------------------------------------------------------------------------
-def render_add_food_form(on_saved=None, compact=False):
+def meal_for_now():
+    """The meal you're most likely logging, from the time of day."""
+    h = datetime.now().hour
+    return "breakfast" if h < 11 else "lunch" if h < 15 else "dinner" if h < 21 else "snack"
+
+
+def render_add_food_form(on_saved=None, compact=False, meal=None):
     """Builds the add-food form in whatever container is currently active.
     Reused by both the standalone /add-food page and the Add tab on the
     merged /food-log page."""
@@ -59,7 +66,8 @@ def render_add_food_form(on_saved=None, compact=False):
 
         date_input = date_field("Date", value=date.today().isoformat())
         meal_select = segmented(
-            "Meal", {"breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"}, "lunch"
+            "Meal", {"breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"},
+            meal or meal_for_now()
         )
 
         with ui.column().classes("w-full gap-1 mt-2"):
@@ -308,24 +316,58 @@ def recent_foods(limit: int = 8):
 
 
 MEALS = {None: "All", "breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snack"}
+MEAL_ORDER = ("breakfast", "lunch", "dinner", "snack")
 
 
 def food_log_page():
-    page_header("Food Log", "What you ate today, measured against your targets.")
+    page_header("Food Log", "Today's food against your targets, and everything before.")
 
     @ui.refreshable
     def figures():
+        """Today, by meal: what's left of your targets, then each meal's food."""
         today = date.today()
         with Session(engine) as s:
-            tf = s.exec(select(FoodLog).where(FoodLog.date == today)).all()
+            tf = s.exec(select(FoodLog).where(FoodLog.date == today).order_by(FoodLog.id)).all()
             g = s.exec(select(NutrientGoals)).first() or NutrientGoals()
         cal = sum(f.calories or 0 for f in tf)
         pro = sum(f.protein_g or 0 for f in tf)
+
+        def left(have, goal, unit):
+            if not goal:
+                return None
+            gap = goal - have
+            return f"{gap:,.0f}{unit} left" if gap >= 0 else f"{-gap:,.0f}{unit} over"
+
         summary_strip([
-            ("Calories today", f"{cal:,.0f}" + (f" / {g.calories:,.0f}" if g.calories else ""), INDIGO),
-            ("Protein today", f"{pro:,.0f}g" + (f" / {g.protein_g:,.0f}g" if g.protein_g else ""), EMERALD),
-            ("Meals logged", str(len(tf)), AMBER),
+            ("Calories", f"{cal:,.0f}" + (f" / {g.calories:,.0f}" if g.calories else ""),
+             RED if g.calories and cal > g.calories else INDIGO, left(cal, g.calories, " kcal")),
+            ("Protein", f"{pro:,.0f}g" + (f" / {g.protein_g:,.0f}g" if g.protein_g else ""), EMERALD,
+             left(pro, g.protein_g, "g")),
         ])
+        by_meal = {m: [f for f in tf if (f.meal_type or "snack") == m] for m in MEAL_ORDER}
+        with ui.element("div").classes("b-meals"):
+            for m in MEAL_ORDER:
+                entries = by_meal[m]
+                icon, color = MEAL_ICONS.get(m, ("restaurant", TEXT_DIM))
+                with ui.element("div").classes("b-meal"):
+                    with ui.element("div").classes("b-day").style("margin-top:0"):
+                        ui.label(m.capitalize() + (f" · {sum(e.calories or 0 for e in entries):,.0f} kcal"
+                                                   if entries else ""))
+                        with ui.element("div").classes("b-meal-add").on("click", lambda m=m: open_add("food", m)):
+                            ui.icon("add")
+                            ui.label("Add")
+                    with ui.column().classes(LIST_GROUP):
+                        if not entries:
+                            with ui.element("div").classes("b-row b-meal-empty").on(
+                                    "click", lambda m=m: open_add("food", m)):
+                                with ui.element("div").classes("b-row-icon").style(
+                                        f"background:{alpha(color, '14')}; color:{color}"):
+                                    ui.icon(icon)
+                                ui.label(f"Nothing yet -- add {m}").classes("b-row-sub")
+                        for e in entries:
+                            sub = f"{e.protein_g:,.0f}g protein" if e.protein_g else (e.tag or "")
+                            list_row(icon, color, e.food_name, sub, f"{e.calories or 0:,.0f} kcal",
+                                     lambda _, eid=e.id: open_edit_food(eid))
 
     figures()
     state = {"meal": None}
@@ -336,12 +378,14 @@ def food_log_page():
         summary_view.classes(remove="b-off") if key == "summary" else summary_view.classes(add="b-off")
 
     with ui.element("div").classes("b-split-pills"):
-        pill_toggle({"log": "Log", "summary": "Summary"}, "log", switch_view)
+        pill_toggle({"log": "History", "summary": "Summary"}, "log", switch_view)
     with ui.element("div").classes("b-split"):
         log_view = ui.column().classes("w-full gap-2 mt-2")
         summary_view = ui.column().classes("w-full gap-3 mt-2 b-off")
 
     with log_view:
+        with ui.element("div").classes("b-day").style("margin-bottom:0"):
+            ui.label("Earlier")
         # --- toolbar: search and meal pills ---
         with ui.element("div").classes("b-toolbar"):
             search_input = ui.input(placeholder="Search food or tag").props(
@@ -356,7 +400,7 @@ def food_log_page():
 
     def query_food():
         with Session(engine) as session:
-            query = select(FoodLog)
+            query = select(FoodLog).where(FoodLog.date < date.today())   # today is above
             if state["meal"]:
                 query = query.where(FoodLog.meal_type == state["meal"])
             entries = session.exec(query.order_by(FoodLog.date.desc()).limit(400)).all()
@@ -382,7 +426,7 @@ def food_log_page():
                 if filters_active:
                     empty_state("No food matches these filters.", "search_off")
                 else:
-                    empty_state("No food logged yet -- tap + to log your first entry.", "restaurant")
+                    empty_state("Nothing from before today yet.", "restaurant")
             for group_date, day_entries in group_by_date(shown):
                 day_total = sum(e.calories or 0 for e in day_entries)
                 with ui.element("div").classes("b-day"):

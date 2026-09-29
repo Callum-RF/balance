@@ -41,7 +41,7 @@ TYPE_ICONS = {
 }
 
 
-def accounts_page():
+def accounts_page(embedded=False, adder=None):
     from backend.networth import (
         ASSET_TYPES,
         LIABILITY_TYPES,
@@ -49,9 +49,10 @@ def accounts_page():
         snapshot_if_due,
     )
 
-    adder = {}
-    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.",
-                action=("Add", "add", lambda: adder["open"]()))
+    adder = {} if adder is None else adder
+    if not embedded:
+        page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.",
+                    action=("Add", "add", lambda: adder["open"]()))
     undo_container = ui.column().classes("w-full")
 
     @ui.refreshable

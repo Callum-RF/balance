@@ -11,7 +11,7 @@ from backend.models import (
     Transaction,
 )
 
-from ..common import CUR, DISCRETIONARY_CATEGORIES
+from ..common import CUR, DISCRETIONARY_CATEGORIES, load_enabled_modules, module_enabled
 from ..components import (
     badge,
     card_box,
@@ -19,6 +19,7 @@ from ..components import (
     empty_state,
     page_header,
     section_header,
+    setting_row,
     sheet_dialog,
     summary_strip,
     thin_meter,
@@ -29,18 +30,19 @@ from ..theme import (
     BORDER,
     EMERALD,
     INDIGO,
+    LIST_GROUP,
     SKY,
     SURFACE,
     TEXT_DIM,
     VIOLET,
 )
-from .dashboard import render_monthly_net
 
 
-def savings_page():
-    adder = {}
-    page_header("Savings Goals", "Targets, pace, and what it takes to hit them.",
-                action=("New goal", "add", lambda: adder["open"]()))
+def savings_page(embedded=False, adder=None):
+    adder = {} if adder is None else adder
+    if not embedded:
+        page_header("Savings Goals", "Targets, pace, and what it takes to hit them.",
+                    action=("New goal", "add", lambda: adder["open"]()))
     undo_container = ui.column().classes("w-full")
     @ui.refreshable
     def content():
@@ -79,7 +81,6 @@ def savings_page():
             ("Target", f"{CUR}{total_target:,.0f} · {len(goals)} goal{'s' if len(goals) != 1 else ''}", INDIGO),
             ("Overall progress", f"{min(total_saved / total_target * 100, 100):.0f}%", AMBER) if total_target else None,
         ])
-        render_monthly_net()
 
         def _contribute(gid, amount):
             with Session(engine) as session:
@@ -223,3 +224,41 @@ def savings_page():
                         ui.button("Add", on_click=contribute).props("flat dense no-caps color=primary")
 
     content()
+
+
+def savings_and_worth_page():
+    """What you've put aside: savings goals, account balances and net worth,
+    and how each month's net adds up -- one page (it used to be two)."""
+    from .accounts import accounts_page
+    from .dashboard import render_monthly_net
+
+    enabled = load_enabled_modules()
+    goals_on, worth_on = module_enabled("savings", enabled), module_enabled("networth", enabled)
+    adders = {"goal": {}, "acct": {}}
+    with sheet_dialog("Add") as chooser:
+        with ui.column().classes(LIST_GROUP):
+            if goals_on:
+                with setting_row("savings", EMERALD, "A savings goal", "Something you're saving towards, with a target",
+                                 on_click=lambda: (chooser.close(), adders["goal"]["open"]())):
+                    pass
+            if worth_on:
+                with setting_row("account_balance", INDIGO, "An account",
+                                 "A current or savings account, cash, a card or a loan -- for net worth",
+                                 on_click=lambda: (chooser.close(), adders["acct"]["open"]())):
+                    pass
+
+    def open_add():
+        if goals_on and worth_on:
+            chooser.open()
+        else:
+            adders["goal" if goals_on else "acct"]["open"]()
+
+    page_header("Savings & net worth", "The goals you're saving towards, what you own and owe, and how each "
+                                       "month adds up.", action=("Add", "add", open_add))
+    if goals_on:
+        ui.label("Goals").classes("b-section-title")
+        savings_page(embedded=True, adder=adders["goal"])
+    if worth_on:
+        ui.label("Accounts & net worth").classes("b-section-title")
+        accounts_page(embedded=True, adder=adders["acct"])
+    render_monthly_net()

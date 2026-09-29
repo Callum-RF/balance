@@ -449,6 +449,19 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
     padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
 }
 
+/* Food Log: today, by meal. */
+.b-meals { display: grid; grid-template-columns: 1fr; gap: 14px; width: 100%; }
+@media (min-width: 900px) { .b-meals { grid-template-columns: 1fr 1fr; gap: 14px 20px; } }
+.b-meal { min-width: 0; }
+.b-meal-add { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; color: var(--b-indigo);
+  text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 700; }
+.b-meal-add .q-icon { font-size: 17px; }
+.b-meal-empty { cursor: pointer; }
+.b-meal-empty .b-row-sub { font-size: 13.5px; }
+
+.b-section-title { font-size: 21px; font-weight: 800; letter-spacing: -.02em; margin-top: 8px;
+  color: var(--b-text); }
+
 /* Dashboard */
 .b-dash-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; width: 100%; }
 .b-streakline { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600;
@@ -581,7 +594,8 @@ window.bMarkTiles = function () {
   document.querySelectorAll('.b-tile[data-route]').forEach(function (t) {
     var r = t.getAttribute('data-route');
     t.classList.toggle('here', r === path
-      || (r === '/recurring' && (path === '/subscriptions' || path === '/scheduled')));
+      || (r === '/recurring' && (path === '/subscriptions' || path === '/scheduled'))
+      || (r === '/savings' && path === '/accounts'));
   });
 };
 (function () {
@@ -626,7 +640,7 @@ _SHORT = {"Savings Goals": "Savings", "Monthly Report": "Report"}
 
 # The More sheet's groups, in tile order: rows of four fill neatly.
 _MORE_GROUPS = [
-    ("Money", ["/income", "/accounts", "/recurring", "/savings"]),
+    ("Money", ["/income", "/recurring", "/savings"]),
     ("Food & kitchen", ["/pantry", "/recipes", "/shopping", "/prices"]),
     ("Insights", ["/forecast", "/reports"]),
 ]
@@ -637,6 +651,9 @@ def _more_sections(enabled):
     skipping pages whose module is off."""
     nav = {route: (label, icon, mod) for label, route, icon, mod in NAV_ITEMS}
     nav["/recurring"] = ("Recurring", "event_repeat", None)
+    # Savings goals and accounts share one page; its tile shows if either is on.
+    worth_on = module_enabled("savings", enabled) or module_enabled("networth", enabled)
+    nav["/savings"] = ("Savings", "savings", None)
     recurring_on = module_enabled("subscriptions", enabled) or module_enabled("scheduled", enabled)
     colors = {"Money": EMERALD, "Food & kitchen": AMBER, "Insights": VIOLET}
     sections = []
@@ -644,13 +661,16 @@ def _more_sections(enabled):
         items = []
         for route in routes:
             label, icon, mod = nav[route]
-            if (route == "/recurring" and recurring_on) or (route != "/recurring" and module_enabled(mod, enabled)):
+            if ((route == "/recurring" and recurring_on) or (route == "/savings" and worth_on)
+                    or (route not in ("/recurring", "/savings") and module_enabled(mod, enabled))):
+                if route == "/savings" and not module_enabled("savings", enabled):
+                    route = "/accounts"   # only accounts are on; /savings would say it's turned off
                 items.append((_SHORT.get(label, label), route, icon))
         if items:
             sections.append((title, colors[title], items))
     # Anything added to NAV_ITEMS later but not grouped above still gets a tile.
     placed = {r for _, routes in _MORE_GROUPS for r in routes} | {r for _, r, _ in DOCK} | {
-        "/import", "/subscriptions", "/scheduled", "/profile", "/settings"}
+        "/import", "/subscriptions", "/scheduled", "/accounts", "/profile", "/settings"}
     extra = [(label, route, icon) for label, route, icon, mod in NAV_ITEMS
              if route not in placed and module_enabled(mod, enabled)]
     if extra:
@@ -735,7 +755,7 @@ def quick_add_sheet(enabled):
             ui.notify(f"Logged {what} for today", type="positive")
         refresh_page()
 
-    def show(kind):
+    def show(kind, meal=None):
         state["kind"] = kind
         body.clear()
         with body:
@@ -752,7 +772,7 @@ def quick_add_sheet(enabled):
                                 with ui.column().classes("gap-0"):
                                     ui.label(f.food_name).classes("n")
                                     ui.label(f"{f.calories or 0:,.0f} kcal").classes("k")
-                render_add_food_form(on_saved=saved, compact=True)
+                render_add_food_form(on_saved=saved, compact=True, meal=meal)
             elif kind == "income":
                 repeats = recent_incomes()
                 if repeats:
@@ -769,10 +789,10 @@ def quick_add_sheet(enabled):
             else:
                 render_add_transaction_form(on_saved=saved, compact=True)
 
-    def open_sheet(kind="expense"):
+    def open_sheet(kind="expense", meal=None):
         kind = kind if kind in kinds else "expense"
         select(kind, notify=False)
-        show(kind)
+        show(kind, meal)
         dlg.open()
 
     return open_sheet

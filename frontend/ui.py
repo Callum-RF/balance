@@ -13,7 +13,6 @@ Importing this module registers the @ui.page routes (run.py does so).
 from nicegui import app, ui
 
 from .common import NAV_ITEMS, load_app_settings, set_page_refresh
-from .pages.accounts import accounts_page
 from .pages.dashboard import dashboard
 from .pages.food import add_food_page, food_log_page
 from .pages.forecast import forecast_page
@@ -25,7 +24,7 @@ from .pages.profile import profile_page
 from .pages.recipes import recipes_page
 from .pages.recurring import recurring_page
 from .pages.reports import reports_page
-from .pages.savings import savings_page
+from .pages.savings import savings_and_worth_page
 from .pages.settings import render_lock_screen, settings_page
 from .pages.shopping import shopping_page
 from .pages.transactions import add_transaction_page, transactions_page
@@ -37,8 +36,8 @@ ROUTES = {
     "/scheduled": lambda: recurring_page("scheduled"),
     "/recipes": recipes_page,
     "/shopping": shopping_page,
-    "/savings": savings_page,
-    "/accounts": accounts_page,
+    "/savings": savings_and_worth_page,
+    "/accounts": savings_and_worth_page,
     "/reports": reports_page,
     "/add-transaction": add_transaction_page,
     "/transactions": transactions_page,

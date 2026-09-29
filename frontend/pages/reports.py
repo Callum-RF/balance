@@ -38,7 +38,7 @@ def reports_page():
             m, y = 12, y - 1
     month_select = ui.select(opts, value=f"{today.year}-{today.month:02d}", label="Month").props(
         "dense options-dense").classes("w-56")
-    container = ui.column().classes("w-full gap-4")
+    container = ui.column().classes("w-full gap-4 b-cards2")
 
     def render():
         container.clear()
@@ -61,7 +61,7 @@ def reports_page():
                         ui.label(f"{CUR}{abs(ou):,.2f} {'over' if ou > 0 else 'under'}").style(
                             f"color:{RED if ou > 0 else EMERALD}")
 
-            with card_box().classes("w-full"):
+            with card_box().classes("w-full b-half"):
                 section_header("Spending by category", icon="pie_chart", icon_color=VIOLET)
                 if not data["by_category"]:
                     ui.label("No spending recorded this month.").classes("text-xs").style(f"color:{TEXT_DIM}")
@@ -71,7 +71,7 @@ def reports_page():
                         ui.label(f"{CUR}{amt:,.2f}").classes("text-sm").style(f"color:{TEXT_DIM}")
 
             if data["top_merchants"]:
-                with card_box().classes("w-full"):
+                with card_box().classes("w-full b-half"):
                     section_header("Top merchants", icon="storefront", icon_color=AMBER)
                     for name, amt in data["top_merchants"]:
                         with ui.row().classes("w-full justify-between py-0.5"):

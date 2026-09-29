@@ -239,327 +239,332 @@ def dashboard():
                            f"{len(_due)} subscription(s) renew this week ({CUR}{sum(s.amount for s in _due):,.0f})",
                            AMBER, "View", "/subscriptions"))
 
-    def _go(target):
-        # A route is a page; anything else is a quick-add kind ("food").
-        ui.navigate.to(target) if target.startswith("/") else open_add(target)
+    # Two columns on a wide screen: today and what needs doing on the left,
+    # the longer view on the right. One column on a phone.
+    with ui.element("div").classes("b-dash-grid"):
+        with ui.column().classes("b-dash-col"):
+            def _go(target):
+                # A route is a page; anything else is a quick-add kind ("food").
+                ui.navigate.to(target) if target.startswith("/") else open_add(target)
 
-    with card_box_accent().classes("w-full gap-1"):
-        section_header("Needs your attention")
-        if not nudges:
-            with ui.row().classes("items-center gap-2 py-1"):
-                ui.icon("check_circle").classes("text-lg").style(f"color:{EMERALD}")
-                ui.label("You're on track — nothing needs your attention.").classes("text-sm")
-        with ui.column().classes("w-full gap-0"):
-            for _icon, _text, _color, _cta, _route in nudges[:5]:
-                row = ui.element("div").classes("b-nudge")
-                if _route:
-                    row.on("click", lambda r=_route: _go(r))
-                with row:
-                    ui.element("span").classes("dot").style(f"background:{_color}")
-                    ui.label(_text).classes("b-nudge-text")
-                    if _cta and _route:
-                        with ui.element("div").classes("b-nudge-cta"):
-                            ui.label(_cta)
-                            ui.icon("chevron_right")
+            with card_box_accent().classes("w-full gap-1"):
+                section_header("Needs your attention")
+                if not nudges:
+                    with ui.row().classes("items-center gap-2 py-1"):
+                        ui.icon("check_circle").classes("text-lg").style(f"color:{EMERALD}")
+                        ui.label("You're on track — nothing needs your attention.").classes("text-sm")
+                with ui.column().classes("w-full gap-0"):
+                    for _icon, _text, _color, _cta, _route in nudges[:5]:
+                        row = ui.element("div").classes("b-nudge")
+                        if _route:
+                            row.on("click", lambda r=_route: _go(r))
+                        with row:
+                            ui.element("span").classes("dot").style(f"background:{_color}")
+                            ui.label(_text).classes("b-nudge-text")
+                            if _cta and _route:
+                                with ui.element("div").classes("b-nudge-cta"):
+                                    ui.label(_cta)
+                                    ui.icon("chevron_right")
 
-    # --- Today: nutrition, what to watch, and water -- navigable day by day ---
-    LIMIT_FIELDS = [
-        ("Added sugar", "added_sugar_g", "sugar_limit_g", "g"),
-        ("Saturated fat", "saturated_fat_g", "saturated_fat_limit_g", "g"),
-        ("Trans fat", "trans_fat_g", "trans_fat_limit_g", "g"),
-        ("Sodium", "sodium_mg", "sodium_limit_mg", "mg"),
-        ("Alcohol", "alcohol_g", "alcohol_limit_g", "g"),
-        ("Caffeine", "caffeine_mg", "caffeine_limit_mg", "mg"),
-    ]
-    view_state = {"date": today}
-    today_card = card_box().classes("w-full")
+            # --- Today: nutrition, what to watch, and water -- navigable day by day ---
+            LIMIT_FIELDS = [
+                ("Added sugar", "added_sugar_g", "sugar_limit_g", "g"),
+                ("Saturated fat", "saturated_fat_g", "saturated_fat_limit_g", "g"),
+                ("Trans fat", "trans_fat_g", "trans_fat_limit_g", "g"),
+                ("Sodium", "sodium_mg", "sodium_limit_mg", "mg"),
+                ("Alcohol", "alcohol_g", "alcohol_limit_g", "g"),
+                ("Caffeine", "caffeine_mg", "caffeine_limit_mg", "mg"),
+            ]
+            view_state = {"date": today}
+            today_card = card_box().classes("w-full")
 
-    def shift_day(delta):
-        new_date = view_state["date"] + timedelta(days=delta)
-        if new_date <= today:  # never navigate into the future
-            view_state["date"] = new_date
+            def shift_day(delta):
+                new_date = view_state["date"] + timedelta(days=delta)
+                if new_date <= today:  # never navigate into the future
+                    view_state["date"] = new_date
+                    render_today()
+
+            def render_today():
+                today_card.clear()
+                sel = view_state["date"]
+                is_today = sel == today
+                with Session(engine) as session:
+                    foods = session.exec(select(FoodLog).where(FoodLog.date == sel)).all()
+                    waters = session.exec(select(WaterLog).where(WaterLog.date == sel)).all()
+
+                cals = sum(f.calories or 0 for f in foods)
+                protein = sum(f.protein_g or 0 for f in foods)
+                carbs = sum(f.carbs_g or 0 for f in foods)
+                fat = sum(f.fat_g or 0 for f in foods)
+                limit_totals = {field: sum(getattr(f, field) or 0 for f in foods) for _, field, _, _ in LIMIT_FIELDS}
+                water_ml = sum(w.amount_ml for w in waters)
+
+                flagged = []
+                for name, field, limit_key, unit in LIMIT_FIELDS:
+                    lim = getattr(goals, limit_key)
+                    cur = limit_totals[field]
+                    if not lim:
+                        continue
+                    if cur > lim:
+                        flagged.append((f"{name} {cur:,.0f}/{lim:,.0f}{unit}", RED))
+                    elif cur / lim >= 0.8:
+                        flagged.append((f"{name} {cur:,.0f}/{lim:,.0f}{unit}", AMBER))
+
+                with today_card:
+                    hdr = section_header(format_date_header(sel), subtitle=sel.strftime("%A, %d %B"))
+                    with hdr:
+                        # Fixed control group so nothing shifts as you page days: the
+                        # "Today" shortcut always occupies its slot (just hidden when
+                        # you're already on today), and the chevrons stay put.
+                        today_btn = ui.button("Today", on_click=lambda: (view_state.update(date=today), render_today())).props("flat dense no-caps").classes("text-xs")
+                        ui.button(icon="chevron_left", on_click=lambda: shift_day(-1)).props("flat round dense").tooltip("Previous day")
+                        nxt = ui.button(icon="chevron_right", on_click=lambda: shift_day(1)).props("flat round dense")
+                        if is_today:
+                            today_btn.style("visibility:hidden")
+                            nxt.props("disable")
+                        else:
+                            nxt.tooltip("Next day")
+
+                    with ui.grid().classes("w-full grid-cols-2 sm:grid-cols-4 gap-2 gap-y-4 mt-1 justify-items-center"):
+                        ring_gauge("Calories", cals, goals.calories, "kcal", INDIGO)
+                        ring_gauge("Protein", protein, goals.protein_g, "g", EMERALD)
+                        ring_gauge("Carbs", carbs, goals.carbs_g, "g", AMBER)
+                        ring_gauge("Fat", fat, goals.fat_g, "g", VIOLET)
+
+                    # Surface only the limits actually worth watching as pills, rather
+                    # than burying every limit in an always-collapsed expansion.
+                    ui.label("Things to watch").classes("text-xs uppercase tracking-wide mt-2").style(f"color:{TEXT_DIM}")
+                    if flagged:
+                        with ui.row().classes("w-full gap-2 flex-wrap"):
+                            for text, color in flagged:
+                                badge(text, color)
+                    else:
+                        with ui.row().classes("items-center gap-1"):
+                            ui.icon("check_circle").classes("text-sm").style(f"color:{EMERALD}")
+                            ui.label("Nothing over the limits." if not is_today else "Nothing over your limits today.").classes("text-xs").style(f"color:{TEXT_DIM}")
+                    with ui.expansion("All limits & caffeine-like substances").classes("w-full mt-1"):
+                        for name, field, limit_key, unit in LIMIT_FIELDS:
+                            progress_row(name, limit_totals[field], getattr(goals, limit_key), unit, is_limit=True, info_key=limit_key)
+                        ui.separator().classes("my-2")
+                        ui.label(
+                            "Not tracked with a daily total (no standard serving data), but worth being "
+                            "mindful of if you consume them regularly:"
+                        ).classes("text-xs mb-1").style(f"color:{TEXT_DIM}")
+                        for sub in CAFFEINE_LIKE_SUBSTANCES:
+                            with ui.row().classes("w-full gap-2 items-start py-1"):
+                                ui.label(sub["name"]).classes("text-sm font-semibold w-24 shrink-0")
+                                ui.label(sub["note"]).classes("text-xs").style(f"color:{TEXT_DIM}")
+
+                    ui.separator().classes("my-2")
+
+                    # --- water: log for today, read-only when reviewing a past day ---
+                    with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                        ui.icon("water_drop").classes("text-lg").style(f"color:{SKY}")
+                        ui.label("Water").classes("text-sm font-semibold")
+                        ui.label(f"{water_ml:,.0f} / {(goals.water_ml or 0):,.0f} ml").classes("text-xs ml-auto").style(f"color:{TEXT_DIM}")
+                    thin_meter(water_ml, goals.water_ml, SKY)
+                    if is_today:
+                        with ui.element("div").classes("b-water mt-1"):
+                            for amount in [200, 330, 500, 750]:
+                                with ui.element("div").classes("b-pill").on("click", lambda amt=amount: add_water(amt)):
+                                    ui.icon("water_drop")
+                                    ui.label(f"{amount} ml")
+                            if waters:
+                                ui.button("Undo", icon="undo", on_click=undo_water).props(
+                                    "flat dense no-caps color=grey").tooltip("Remove the last glass")
+
+            def add_water(amount_ml):
+                with Session(engine) as session:
+                    session.add(WaterLog(date=today, amount_ml=amount_ml))
+                    session.commit()
+                render_today()
+
+            def undo_water():
+                with Session(engine) as session:
+                    last = session.exec(
+                        select(WaterLog).where(WaterLog.date == today).order_by(WaterLog.id.desc())
+                    ).first()
+                    if last:
+                        session.delete(last)
+                        session.commit()
+                render_today()
+
             render_today()
 
-    def render_today():
-        today_card.clear()
-        sel = view_state["date"]
-        is_today = sel == today
-        with Session(engine) as session:
-            foods = session.exec(select(FoodLog).where(FoodLog.date == sel)).all()
-            waters = session.exec(select(WaterLog).where(WaterLog.date == sel)).all()
+        with ui.column().classes("b-dash-col"):
+            # --- Cost per macro: the signature money x health crossover. Pantry items
+            # carry both price and protein, so we can rank what gives the most protein
+            # per pound -- the "eat well on a budget" insight no single-purpose app has.
+            # Shown only when there's enough priced pantry data to rank. ---
+            with Session(engine) as session:
+                _pantry = session.exec(select(PantryItem)).all()
+            protein_value = [
+                (it.protein_g / it.price, it.name, it.calories)
+                for it in _pantry
+                if it.price and it.price > 0 and it.protein_g and it.protein_g > 0
+            ]
+            if len(protein_value) >= 2:
+                protein_value.sort(key=lambda x: -x[0])
+                best = protein_value[:3]
+                worst = protein_value[-1]
+                with card_box().classes("w-full"):
+                    section_header("Best value protein",
+                                   subtitle=f"Most protein per {CUR}1 in your pantry — handy for a budget-friendly bulk")
+                    for score, name, _cals in best:
+                        with ui.row().classes("w-full items-center gap-2 py-1"):
+                            ui.label(name).classes("text-sm font-semibold flex-grow")
+                            ui.label(f"{score:,.0f}g protein / {CUR}1").classes("text-sm").style(f"color:{EMERALD}")
+                    if worst not in best:
+                        ui.separator().classes("my-1")
+                        with ui.row().classes("w-full items-center gap-2"):
+                            ui.label(f"Worst value: {worst[1]}").classes("text-xs flex-grow").style(f"color:{TEXT_DIM}")
+                            ui.label(f"{worst[0]:,.0f}g / {CUR}1").classes("text-xs").style(f"color:{AMBER}")
 
-        cals = sum(f.calories or 0 for f in foods)
-        protein = sum(f.protein_g or 0 for f in foods)
-        carbs = sum(f.carbs_g or 0 for f in foods)
-        fat = sum(f.fat_g or 0 for f in foods)
-        limit_totals = {field: sum(getattr(f, field) or 0 for f in foods) for _, field, _, _ in LIMIT_FIELDS}
-        water_ml = sum(w.amount_ml for w in waters)
+            # --- Insights: notable this-month-vs-last-month changes, computed not curated ---
+            prev_month_start, prev_month_end = period_bounds("monthly", month_start - timedelta(days=1))
+            with Session(engine) as session:
+                prev_transactions = session.exec(
+                    select(Transaction).where(Transaction.date >= prev_month_start, Transaction.date <= prev_month_end)
+                ).all()
+            prev_spend_by_category: dict = {}
+            for t in prev_transactions:
+                prev_spend_by_category[t.category_id] = prev_spend_by_category.get(t.category_id, 0) + t.amount
 
-        flagged = []
-        for name, field, limit_key, unit in LIMIT_FIELDS:
-            lim = getattr(goals, limit_key)
-            cur = limit_totals[field]
-            if not lim:
-                continue
-            if cur > lim:
-                flagged.append((f"{name} {cur:,.0f}/{lim:,.0f}{unit}", RED))
-            elif cur / lim >= 0.8:
-                flagged.append((f"{name} {cur:,.0f}/{lim:,.0f}{unit}", AMBER))
+            # pro-rate last month to the same number of elapsed days so mid-month
+            # comparisons aren't automatically "down vs last month"
+            elapsed = (today - month_start).days + 1
+            prev_days = (prev_month_end - prev_month_start).days + 1
+            prorate = min(elapsed / prev_days, 1.0)
 
-        with today_card:
-            hdr = section_header(format_date_header(sel), subtitle=sel.strftime("%A, %d %B"))
-            with hdr:
-                # Fixed control group so nothing shifts as you page days: the
-                # "Today" shortcut always occupies its slot (just hidden when
-                # you're already on today), and the chevrons stay put.
-                today_btn = ui.button("Today", on_click=lambda: (view_state.update(date=today), render_today())).props("flat dense no-caps").classes("text-xs")
-                ui.button(icon="chevron_left", on_click=lambda: shift_day(-1)).props("flat round dense").tooltip("Previous day")
-                nxt = ui.button(icon="chevron_right", on_click=lambda: shift_day(1)).props("flat round dense")
-                if is_today:
-                    today_btn.style("visibility:hidden")
-                    nxt.props("disable")
-                else:
-                    nxt.tooltip("Next day")
+            insights = []
+            for cat_id, cur_amt in month_spend_by_category.items():
+                prev_amt = prev_spend_by_category.get(cat_id, 0) * prorate
+                if prev_amt < 10 and cur_amt < 10:
+                    continue
+                delta = cur_amt - prev_amt
+                if prev_amt > 0 and abs(delta) >= 15 and abs(delta) / prev_amt >= 0.25:
+                    name = categories.get(cat_id, "Uncategorized")
+                    pct = delta / prev_amt * 100
+                    if prev_amt < 25 or abs(pct) > 300:
+                        # tiny base makes percentages absurd ("up 1351%") -- use absolute phrasing
+                        text = (f"{name} {CUR}{abs(delta):,.0f} {'more' if delta > 0 else 'less'} than last month "
+                                f"({CUR}{cur_amt:,.0f} vs {CUR}{prev_amt:,.0f})")
+                    else:
+                        text = (f"{name} {'up' if delta > 0 else 'down'} {abs(pct):.0f}% vs last month "
+                                f"({CUR}{cur_amt:,.0f} vs {CUR}{prev_amt:,.0f})")
+                    insights.append((abs(delta), text, AMBER if delta > 0 else EMERALD))
+            prev_total_prorated = sum(prev_spend_by_category.values()) * prorate
+            if prev_total_prorated > 0:
+                total_delta = spent_this_month - prev_total_prorated
+                if abs(total_delta) / prev_total_prorated >= 0.15 and abs(total_delta) >= 30:
+                    pct = total_delta / prev_total_prorated * 100
+                    insights.append((abs(total_delta) * 10,  # weight overall change to the top
+                                     f"Overall spending {'up' if total_delta > 0 else 'down'} {abs(pct):.0f}% "
+                                     f"vs the same point last month", AMBER if total_delta > 0 else EMERALD))
+            insights.sort(key=lambda x: -x[0])
 
-            with ui.grid().classes("w-full grid-cols-2 sm:grid-cols-4 gap-2 gap-y-4 mt-1 justify-items-center"):
-                ring_gauge("Calories", cals, goals.calories, "kcal", INDIGO)
-                ring_gauge("Protein", protein, goals.protein_g, "g", EMERALD)
-                ring_gauge("Carbs", carbs, goals.carbs_g, "g", AMBER)
-                ring_gauge("Fat", fat, goals.fat_g, "g", VIOLET)
+            if insights:
+                with card_box().classes("w-full"):
+                    section_header("Insights",
+                                   subtitle="Notable changes vs the same point last month")
+                    for _, text, color in insights[:3]:
+                        with ui.row().classes("items-start gap-2 no-wrap"):
+                            ui.icon("trending_up" if color == AMBER else "trending_down").classes(
+                                "text-base shrink-0 mt-0.5").style(f"color:{color}")
+                            ui.label(text).classes("text-sm")
 
-            # Surface only the limits actually worth watching as pills, rather
-            # than burying every limit in an always-collapsed expansion.
-            ui.label("Things to watch").classes("text-xs uppercase tracking-wide mt-2").style(f"color:{TEXT_DIM}")
-            if flagged:
-                with ui.row().classes("w-full gap-2 flex-wrap"):
-                    for text, color in flagged:
-                        badge(text, color)
-            else:
-                with ui.row().classes("items-center gap-1"):
-                    ui.icon("check_circle").classes("text-sm").style(f"color:{EMERALD}")
-                    ui.label("Nothing over the limits." if not is_today else "Nothing over your limits today.").classes("text-xs").style(f"color:{TEXT_DIM}")
-            with ui.expansion("All limits & caffeine-like substances").classes("w-full mt-1"):
-                for name, field, limit_key, unit in LIMIT_FIELDS:
-                    progress_row(name, limit_totals[field], getattr(goals, limit_key), unit, is_limit=True, info_key=limit_key)
-                ui.separator().classes("my-2")
-                ui.label(
-                    "Not tracked with a daily total (no standard serving data), but worth being "
-                    "mindful of if you consume them regularly:"
-                ).classes("text-xs mb-1").style(f"color:{TEXT_DIM}")
-                for sub in CAFFEINE_LIKE_SUBSTANCES:
-                    with ui.row().classes("w-full gap-2 items-start py-1"):
-                        ui.label(sub["name"]).classes("text-sm font-semibold w-24 shrink-0")
-                        ui.label(sub["note"]).classes("text-xs").style(f"color:{TEXT_DIM}")
+            # --- Savings: monthly net (income − spending) for the trailing 6 months ---
+            month_keys = []
+            y, m = today.year, today.month
+            for _ in range(6):
+                month_keys.append((y, m))
+                m -= 1
+                if m == 0:
+                    m, y = 12, y - 1
+            month_keys.reverse()
+            six_start = date(month_keys[0][0], month_keys[0][1], 1)
+            with Session(engine) as session:
+                tx6 = session.exec(select(Transaction).where(Transaction.date >= six_start)).all()
+                inc6 = session.exec(select(Income).where(Income.date >= six_start)).all()
+            spend_by_m, inc_by_m = {}, {}
+            for t in tx6:
+                spend_by_m[(t.date.year, t.date.month)] = spend_by_m.get((t.date.year, t.date.month), 0) + t.amount
+            for i in inc6:
+                inc_by_m[(i.date.year, i.date.month)] = inc_by_m.get((i.date.year, i.date.month), 0) + i.amount
+            net_series = [round(inc_by_m.get(k, 0) - spend_by_m.get(k, 0), 2) for k in month_keys]
 
-            ui.separator().classes("my-2")
-
-            # --- water: log for today, read-only when reviewing a past day ---
-            with ui.row().classes("w-full items-center gap-2 no-wrap"):
-                ui.icon("water_drop").classes("text-lg").style(f"color:{SKY}")
-                ui.label("Water").classes("text-sm font-semibold")
-                ui.label(f"{water_ml:,.0f} / {(goals.water_ml or 0):,.0f} ml").classes("text-xs ml-auto").style(f"color:{TEXT_DIM}")
-            thin_meter(water_ml, goals.water_ml, SKY)
-            if is_today:
-                with ui.element("div").classes("b-water mt-1"):
-                    for amount in [200, 330, 500, 750]:
-                        with ui.element("div").classes("b-pill").on("click", lambda amt=amount: add_water(amt)):
-                            ui.icon("water_drop")
-                            ui.label(f"{amount} ml")
-                    if waters:
-                        ui.button("Undo", icon="undo", on_click=undo_water).props(
-                            "flat dense no-caps color=grey").tooltip("Remove the last glass")
-
-    def add_water(amount_ml):
-        with Session(engine) as session:
-            session.add(WaterLog(date=today, amount_ml=amount_ml))
-            session.commit()
-        render_today()
-
-    def undo_water():
-        with Session(engine) as session:
-            last = session.exec(
-                select(WaterLog).where(WaterLog.date == today).order_by(WaterLog.id.desc())
-            ).first()
-            if last:
-                session.delete(last)
-                session.commit()
-        render_today()
-
-    render_today()
-
-    # --- Cost per macro: the signature money x health crossover. Pantry items
-    # carry both price and protein, so we can rank what gives the most protein
-    # per pound -- the "eat well on a budget" insight no single-purpose app has.
-    # Shown only when there's enough priced pantry data to rank. ---
-    with Session(engine) as session:
-        _pantry = session.exec(select(PantryItem)).all()
-    protein_value = [
-        (it.protein_g / it.price, it.name, it.calories)
-        for it in _pantry
-        if it.price and it.price > 0 and it.protein_g and it.protein_g > 0
-    ]
-    if len(protein_value) >= 2:
-        protein_value.sort(key=lambda x: -x[0])
-        best = protein_value[:3]
-        worst = protein_value[-1]
-        with card_box().classes("w-full"):
-            section_header("Best value protein",
-                           subtitle=f"Most protein per {CUR}1 in your pantry — handy for a budget-friendly bulk")
-            for score, name, _cals in best:
-                with ui.row().classes("w-full items-center gap-2 py-1"):
-                    ui.label(name).classes("text-sm font-semibold flex-grow")
-                    ui.label(f"{score:,.0f}g protein / {CUR}1").classes("text-sm").style(f"color:{EMERALD}")
-            if worst not in best:
-                ui.separator().classes("my-1")
-                with ui.row().classes("w-full items-center gap-2"):
-                    ui.label(f"Worst value: {worst[1]}").classes("text-xs flex-grow").style(f"color:{TEXT_DIM}")
-                    ui.label(f"{worst[0]:,.0f}g / {CUR}1").classes("text-xs").style(f"color:{AMBER}")
-
-    # --- Insights: notable this-month-vs-last-month changes, computed not curated ---
-    prev_month_start, prev_month_end = period_bounds("monthly", month_start - timedelta(days=1))
-    with Session(engine) as session:
-        prev_transactions = session.exec(
-            select(Transaction).where(Transaction.date >= prev_month_start, Transaction.date <= prev_month_end)
-        ).all()
-    prev_spend_by_category: dict = {}
-    for t in prev_transactions:
-        prev_spend_by_category[t.category_id] = prev_spend_by_category.get(t.category_id, 0) + t.amount
-
-    # pro-rate last month to the same number of elapsed days so mid-month
-    # comparisons aren't automatically "down vs last month"
-    elapsed = (today - month_start).days + 1
-    prev_days = (prev_month_end - prev_month_start).days + 1
-    prorate = min(elapsed / prev_days, 1.0)
-
-    insights = []
-    for cat_id, cur_amt in month_spend_by_category.items():
-        prev_amt = prev_spend_by_category.get(cat_id, 0) * prorate
-        if prev_amt < 10 and cur_amt < 10:
-            continue
-        delta = cur_amt - prev_amt
-        if prev_amt > 0 and abs(delta) >= 15 and abs(delta) / prev_amt >= 0.25:
-            name = categories.get(cat_id, "Uncategorized")
-            pct = delta / prev_amt * 100
-            if prev_amt < 25 or abs(pct) > 300:
-                # tiny base makes percentages absurd ("up 1351%") -- use absolute phrasing
-                text = (f"{name} {CUR}{abs(delta):,.0f} {'more' if delta > 0 else 'less'} than last month "
-                        f"({CUR}{cur_amt:,.0f} vs {CUR}{prev_amt:,.0f})")
-            else:
-                text = (f"{name} {'up' if delta > 0 else 'down'} {abs(pct):.0f}% vs last month "
-                        f"({CUR}{cur_amt:,.0f} vs {CUR}{prev_amt:,.0f})")
-            insights.append((abs(delta), text, AMBER if delta > 0 else EMERALD))
-    prev_total_prorated = sum(prev_spend_by_category.values()) * prorate
-    if prev_total_prorated > 0:
-        total_delta = spent_this_month - prev_total_prorated
-        if abs(total_delta) / prev_total_prorated >= 0.15 and abs(total_delta) >= 30:
-            pct = total_delta / prev_total_prorated * 100
-            insights.append((abs(total_delta) * 10,  # weight overall change to the top
-                             f"Overall spending {'up' if total_delta > 0 else 'down'} {abs(pct):.0f}% "
-                             f"vs the same point last month", AMBER if total_delta > 0 else EMERALD))
-    insights.sort(key=lambda x: -x[0])
-
-    if insights:
-        with card_box().classes("w-full"):
-            section_header("Insights",
-                           subtitle="Notable changes vs the same point last month")
-            for _, text, color in insights[:3]:
-                with ui.row().classes("items-start gap-2 no-wrap"):
-                    ui.icon("trending_up" if color == AMBER else "trending_down").classes(
-                        "text-base shrink-0 mt-0.5").style(f"color:{color}")
-                    ui.label(text).classes("text-sm")
-
-    # --- Savings: monthly net (income − spending) for the trailing 6 months ---
-    month_keys = []
-    y, m = today.year, today.month
-    for _ in range(6):
-        month_keys.append((y, m))
-        m -= 1
-        if m == 0:
-            m, y = 12, y - 1
-    month_keys.reverse()
-    six_start = date(month_keys[0][0], month_keys[0][1], 1)
-    with Session(engine) as session:
-        tx6 = session.exec(select(Transaction).where(Transaction.date >= six_start)).all()
-        inc6 = session.exec(select(Income).where(Income.date >= six_start)).all()
-    spend_by_m, inc_by_m = {}, {}
-    for t in tx6:
-        spend_by_m[(t.date.year, t.date.month)] = spend_by_m.get((t.date.year, t.date.month), 0) + t.amount
-    for i in inc6:
-        inc_by_m[(i.date.year, i.date.month)] = inc_by_m.get((i.date.year, i.date.month), 0) + i.amount
-    net_series = [round(inc_by_m.get(k, 0) - spend_by_m.get(k, 0), 2) for k in month_keys]
-
-    if any(inc_by_m.values()) or any(spend_by_m.values()):
-        saved_total = sum(net_series)
-        cumulative, _run = [], 0.0
-        for v in net_series:
-            _run += v
-            cumulative.append(round(_run, 2))
-        with card_box().classes("w-full"):
-            hdr = section_header("Savings",
-                                 subtitle="Monthly net (bars) and how it adds up (line), last 6 months")
-            with hdr:
-                badge(f"{'+' if saved_total >= 0 else '−'}{CUR}{abs(saved_total):,.0f} over 6 months",
-                      EMERALD if saved_total >= 0 else RED)
-            echart({
-                "backgroundColor": "transparent",
-                "grid": {"left": 55, "right": 55, "top": 30, "bottom": 28},
-                "legend": {"top": 0, "textStyle": {"color": TEXT_DIM, "fontSize": 10},
-                           "itemWidth": 14, "itemHeight": 8},
-                "xAxis": {
-                    "type": "category",
-                    "data": [date(k[0], k[1], 1).strftime("%b") for k in month_keys],
-                    "axisLine": {"lineStyle": {"color": BORDER}},
-                    "axisLabel": {"color": TEXT_DIM, "fontSize": 10},
-                },
-                "yAxis": [
-                    {"type": "value", "axisLine": {"show": False},
-                     "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
-                     "splitLine": {"lineStyle": {"color": BORDER}}},
-                    {"type": "value", "axisLine": {"show": False},
-                     "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
-                     "splitLine": {"show": False}},
-                ],
-                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-                "series": [
-                    {
-                        "name": "Monthly net", "type": "bar",
-                        "data": [
-                            {"value": v, "itemStyle": {"color": EMERALD if v >= 0 else RED, "borderRadius": [3, 3, 0, 0]}}
-                            for v in net_series
-                        ],
-                        "markLine": {
-                            "silent": True, "symbol": "none",
-                            "lineStyle": {"color": TEXT_DIM, "type": "dashed"},
-                            "label": {"show": False},
-                            "data": [{"yAxis": 0}],
+            if any(inc_by_m.values()) or any(spend_by_m.values()):
+                saved_total = sum(net_series)
+                cumulative, _run = [], 0.0
+                for v in net_series:
+                    _run += v
+                    cumulative.append(round(_run, 2))
+                with card_box().classes("w-full"):
+                    hdr = section_header("Savings",
+                                         subtitle="Monthly net (bars) and how it adds up (line), last 6 months")
+                    with hdr:
+                        badge(f"{'+' if saved_total >= 0 else '−'}{CUR}{abs(saved_total):,.0f} over 6 months",
+                              EMERALD if saved_total >= 0 else RED)
+                    echart({
+                        "backgroundColor": "transparent",
+                        "grid": {"left": 55, "right": 55, "top": 30, "bottom": 28},
+                        "legend": {"top": 0, "textStyle": {"color": TEXT_DIM, "fontSize": 10},
+                                   "itemWidth": 14, "itemHeight": 8},
+                        "xAxis": {
+                            "type": "category",
+                            "data": [date(k[0], k[1], 1).strftime("%b") for k in month_keys],
+                            "axisLine": {"lineStyle": {"color": BORDER}},
+                            "axisLabel": {"color": TEXT_DIM, "fontSize": 10},
                         },
-                    },
-                    {
-                        "name": "Total saved", "type": "line", "yAxisIndex": 1,
-                        "data": cumulative, "smooth": True, "symbolSize": 5,
-                        "lineStyle": {"color": INDIGO, "width": 3},
-                        "itemStyle": {"color": INDIGO},
-                        "areaStyle": {"color": "rgba(99,102,241,0.08)"},
-                    },
-                ],
-            }).classes("w-full h-52")
+                        "yAxis": [
+                            {"type": "value", "axisLine": {"show": False},
+                             "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
+                             "splitLine": {"lineStyle": {"color": BORDER}}},
+                            {"type": "value", "axisLine": {"show": False},
+                             "axisLabel": {"color": TEXT_DIM, "formatter": f"{CUR}{{value}}"},
+                             "splitLine": {"show": False}},
+                        ],
+                        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                        "series": [
+                            {
+                                "name": "Monthly net", "type": "bar",
+                                "data": [
+                                    {"value": v, "itemStyle": {"color": EMERALD if v >= 0 else RED, "borderRadius": [3, 3, 0, 0]}}
+                                    for v in net_series
+                                ],
+                                "markLine": {
+                                    "silent": True, "symbol": "none",
+                                    "lineStyle": {"color": TEXT_DIM, "type": "dashed"},
+                                    "label": {"show": False},
+                                    "data": [{"yAxis": 0}],
+                                },
+                            },
+                            {
+                                "name": "Total saved", "type": "line", "yAxisIndex": 1,
+                                "data": cumulative, "smooth": True, "symbolSize": 5,
+                                "lineStyle": {"color": INDIGO, "width": 3},
+                                "itemStyle": {"color": INDIGO},
+                                "areaStyle": {"color": "rgba(99,102,241,0.08)"},
+                            },
+                        ],
+                    }).classes("w-full h-52")
 
-    # --- habit streaks ---
-    from backend.streaks import compute_streaks
-    streaks = compute_streaks(today)
-    if any(s["streak"] > 0 for s in streaks):
-        with card_box().classes("w-full"):
-            section_header("Streaks", subtitle="Days in a row hitting your goals")
-            with ui.element("div").classes("b-streaks"):
-                for s in streaks:
-                    if s["streak"] <= 0:
-                        continue
-                    with ui.element("div").classes("b-streak"):
-                        ui.icon("local_fire_department").classes("text-xl").style(f"color:{AMBER}")
-                        ui.label(str(s["streak"])).classes("n")
-                        with ui.column().classes("gap-0"):
-                            ui.label(f"day{'s' if s['streak'] != 1 else ''}").classes("l")
-                            ui.label(s["label"]).classes("l")
+            # --- habit streaks ---
+            from backend.streaks import compute_streaks
+            streaks = compute_streaks(today)
+            if any(s["streak"] > 0 for s in streaks):
+                with card_box().classes("w-full"):
+                    section_header("Streaks", subtitle="Days in a row hitting your goals")
+                    with ui.element("div").classes("b-streaks"):
+                        for s in streaks:
+                            if s["streak"] <= 0:
+                                continue
+                            with ui.element("div").classes("b-streak"):
+                                ui.icon("local_fire_department").classes("text-xl").style(f"color:{AMBER}")
+                                ui.label(str(s["streak"])).classes("n")
+                                with ui.column().classes("gap-0"):
+                                    ui.label(f"day{'s' if s['streak'] != 1 else ''}").classes("l")
+                                    ui.label(s["label"]).classes("l")
 
     # --- Overview: spending & nutrition over a chosen window (centerpiece) ---
     with card_box().classes("w-full"):

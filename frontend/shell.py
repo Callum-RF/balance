@@ -261,7 +261,7 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   display: flex; align-items: center; background: var(--b-glass-strong);
   backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
   box-shadow: 0 1px 0 var(--b-border); }
-.b-topbar-in { width: 100%; max-width: 64rem; margin: 0 auto; padding: 0 20px;
+.b-topbar-in { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 20px;
   display: flex; align-items: center; gap: 10px; }
 @media (max-width: 640px) { .b-topbar-in { padding: 0 12px; } }
 .b-wordmark { font-size: 19px; font-weight: 800; letter-spacing: -.02em; color: var(--b-text);
@@ -390,6 +390,46 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 .b-day { display: flex; align-items: baseline; justify-content: space-between; width: 100%;
   margin: 16px 2px 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--b-text-dim); }
+
+/* Layout. Pages share Medley's 1240px frame; list pages keep a reading
+   width inside it (a row's name and amount drift apart when stretched). */
+.b-narrow { width: 100%; max-width: 960px; margin: 0 auto; }
+.b-off { display: none !important; }
+
+/* Transactions / Income: log and summary side by side once there's room. */
+.b-split { width: 100%; }
+@media (min-width: 1200px) {
+  .b-split { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+  .b-split > .b-off { display: flex !important; }
+  .b-split > :last-child { position: sticky; top: 84px; }   /* summary stays put as the list scrolls */
+  .b-split-pills { display: none; }
+}
+
+/* Dashboard: two columns on a wide screen. */
+.b-dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; width: 100%; }
+.b-dash-col { width: 100%; min-width: 0; gap: 16px; }
+@media (min-width: 640px) { .b-dash-grid, .b-dash-col { gap: 24px; } }
+@media (min-width: 1100px) {
+  .b-dash-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+}
+
+/* Paired cards (Forecast, Reports) share a row on a wide screen. */
+@media (min-width: 1024px) {
+  .b-cards2 { flex-direction: row !important; flex-wrap: wrap; align-items: stretch; }
+  .b-cards2 > * { flex: 1 1 100%; min-width: 0; }
+  .b-cards2 > .b-half { flex: 1 1 calc(50% - 8px); }
+  .b-cards2 > .q-btn { flex: 0 0 auto; }
+}
+
+/* Phones: every dialog rises from the bottom like the + sheet -- in reach
+   of a thumb. (The command palette stays at the top, above the keyboard.) */
+@media (max-width: 640px) {
+  .q-dialog__inner--standard:not(:has(> .b-palette)) { padding: 0 !important; align-items: flex-end !important; }
+  .q-dialog__inner--standard:not(:has(> .b-palette)) > .q-card {
+    width: 100vw !important; max-width: 100vw !important; margin: 0 !important;
+    border-radius: 22px 22px 0 0 !important; max-height: 88vh; overflow-y: auto;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important; }
+}
 
 /* Dashboard */
 .b-budget { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: -2px; }

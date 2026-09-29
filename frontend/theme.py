@@ -59,7 +59,7 @@ CARD_ACCENT = "surface-card surface-card-accent border rounded-2xl p-4 sm:p-5 ga
 # the "grouped list" look used by Transactions / Food Log / Settings.
 LIST_GROUP = f"bg-[{SURFACE}] border border-[{BORDER}] rounded-2xl w-full overflow-hidden gap-0 p-0"
 CHART_PALETTE = [INDIGO, EMERALD, AMBER, SKY, RED, VIOLET, "#FB923C", "#2DD4BF"]
-PAGE = "w-full max-w-5xl mx-auto p-3 sm:p-6 gap-4 sm:gap-6"
+PAGE = "w-full max-w-[1240px] mx-auto p-3 sm:p-6 gap-4 sm:gap-6"
 
 ACTIVE_THEME = "dark"
 THEME_DARK = True

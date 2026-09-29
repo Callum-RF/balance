@@ -61,12 +61,19 @@ ROUTES = {
 # typing its URL. Built from the nav registry, plus /add-income (Income module).
 ROUTE_MODULE = {route: mod for _, route, _, mod in NAV_ITEMS if mod}
 ROUTE_MODULE["/add-income"] = "income"
-def _fresh_page(page_fn):
+# Pages that use the full 1240px frame (dashboards, charts, list + summary
+# side by side). Everything else is mostly a list or a form, and sits in a
+# centred reading-width column.
+WIDE_ROUTES = {"/", "/transactions", "/income", "/forecast", "/reports"}
+
+
+def _fresh_page(page_fn, route):
     """Each page starts with no refresh hook, so quick-add never calls into
     the page that was on screen before this one."""
     def wrapped():
         set_page_refresh(None)
-        return page_fn()
+        with ui.column().classes("w-full gap-4 sm:gap-6" + ("" if route in WIDE_ROUTES else " b-narrow")):
+            page_fn()
     return wrapped
 
 
@@ -75,7 +82,7 @@ for _route, _mod in ROUTE_MODULE.items():
         ROUTES[_route] = _module_guard(ROUTES[_route], _mod)
 
 
-ROUTES = {route: _fresh_page(fn) for route, fn in ROUTES.items()}
+ROUTES = {route: _fresh_page(fn, route) for route, fn in ROUTES.items()}
 
 
 @ui.page("/")

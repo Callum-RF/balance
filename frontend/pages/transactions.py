@@ -292,14 +292,17 @@ def transactions_page():
 
     figures()
     def switch_view(key):
-        log_view.set_visibility(key == "log")
-        summary_view.set_visibility(key == "summary")
+        # Only matters on narrower screens: from 1200px the summary sits
+        # beside the log and the pills are hidden (see .b-split).
+        log_view.classes(remove="b-off") if key == "log" else log_view.classes(add="b-off")
+        summary_view.classes(remove="b-off") if key == "summary" else summary_view.classes(add="b-off")
 
-    pill_toggle({"log": "Log", "summary": "Summary"}, "log", switch_view)
+    with ui.element("div").classes("b-split-pills"):
+        pill_toggle({"log": "Log", "summary": "Summary"}, "log", switch_view)
 
-    log_view = ui.column().classes("w-full gap-2 mt-2")
-    summary_view = ui.column().classes("w-full gap-3 mt-2")
-    summary_view.set_visibility(False)
+    with ui.element("div").classes("b-split"):
+        log_view = ui.column().classes("w-full gap-2 mt-2")
+        summary_view = ui.column().classes("w-full gap-3 mt-2 b-off")
 
     with log_view:
         with Session(engine) as session:

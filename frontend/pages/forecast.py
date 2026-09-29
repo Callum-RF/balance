@@ -36,7 +36,7 @@ def forecast_page():
                 icon="insights")
 
     months_select = ui.select({1: "1 month", 6: "6 months", 12: "12 months"}, value=6, label="Time horizon").props("dense options-dense").classes("w-48")
-    forecast_container = ui.column().classes("w-full gap-4")
+    forecast_container = ui.column().classes("w-full gap-4 b-cards2")
 
     def render():
         forecast_container.clear()
@@ -95,7 +95,7 @@ def forecast_page():
                     ).classes("text-xs").style(f"color:{TEXT_DIM}")
 
             # --- weight projection ---
-            with card_box().classes("w-full"):
+            with card_box().classes("w-full b-half"):
                 change = result["projected_weight_change_kg"]
                 direction = "loss" if change < 0 else ("gain" if change > 0 else "change")
                 color = EMERALD if change <= 0 else AMBER
@@ -131,7 +131,7 @@ def forecast_page():
                 }).classes("w-full h-56")
 
             # --- spending projection ---
-            with card_box().classes("w-full"):
+            with card_box().classes("w-full b-half"):
                 section_header("Projected spending", icon="savings", icon_color=SKY)
                 spend_line = f"{CUR}{result['projected_total_spend']:,.2f} over {result['months']} month(s) at your recent pace"
                 ui.label(spend_line).classes("text-sm mb-2").style(f"color:{TEXT_DIM}")

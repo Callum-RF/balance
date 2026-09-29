@@ -14,12 +14,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlmodel import Session, select  # noqa: E402
 
-from backend.database import engine  # noqa: E402
+from backend.database import create_db_and_tables, engine  # noqa: E402
 from backend.models import (  # noqa: E402
     Category, Transaction, Income, FoodLog, WaterLog, WeightLog,
     UserProfile, BudgetTarget, PantryItem, Subscription, PriceObservation,
 )
 from backend.timeutil import utcnow  # noqa: E402
+
+# A brand-new database (a fresh BALANCE_DB) has no tables or categories until
+# the app has run once; set it up the same way the app does.
+create_db_and_tables()
 
 random.seed(42)
 today = date.today()

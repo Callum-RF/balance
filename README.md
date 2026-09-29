@@ -28,8 +28,10 @@ Tailscale as an installable PWA.
 
 That intersection is also the **filter** for what earns a place in the product:
 
-- **Cost-per-macro.** Balance ranks your pantry by *protein per £*, so "eat well
-  on a budget" becomes a number instead of a vibe.
+- **What your eating costs.** Balance puts your food spend against the calories
+  you log: cost per 1,000 kcal, eating out vs cooking at home, and the best
+  protein per £ in your pantry — so "eat well on a budget" becomes a number
+  instead of a vibe.
 - **Eating out, costed both ways.** Log a meal out and it records the £ *and* the
   kcal in one entry.
 - **Everything else earns its place.** Single-sided features (net worth, price
@@ -46,14 +48,16 @@ data never leaves your machine — no accounts, no cloud, no telemetry.
 
 > Rendered with generated demo data — no real personal finances shown.
 
-**Money × health** — the signature view: cost-per-macro ranking, computed
-month-over-month insights, and a savings chart with a cumulative "total saved" line.
+**Money × health** — the signature view: four weeks of food spend against the
+calories you logged — cost per 1,000 kcal, eating out's share of the money vs
+its share of the calories, what a calorie costs out vs at home, and the best
+protein per £ in your pantry.
 
 ![Money × health](docs/screenshots/money-health.png)
 
 | | |
 |---|---|
-| **Transactions** — searchable, categorised, CSV export, per-row context tags. | **Food Log** — meals against your daily targets, macros, barcode lookup. |
+| **Transactions** — searchable, categorised, CSV export, per-row context tags. | **Food Log** — today by meal against your targets, earlier days, and a nutrition summary. |
 | ![Transactions](docs/screenshots/transactions.png) | ![Food Log](docs/screenshots/food-log.png) |
 | **Forecast** — TDEE *calibrated from your own weight + intake history*, not a population formula. | **Pantry** — stock with cost + macros, expiry alerts, waste tracking. |
 | ![Forecast](docs/screenshots/forecast.png) | ![Pantry](docs/screenshots/pantry.png) |

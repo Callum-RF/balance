@@ -1,30 +1,36 @@
 # Screenshots
 
-The main [`README.md`](../../README.md) references these image files. Add PNGs
-here with these exact names:
+The main [`README.md`](../../README.md) references these image files.
+`scripts/capture_screenshots.py` regenerates all of them (dark theme, 2x).
 
-| File | Page | Notes |
+| File | Page | Shows |
 |---|---|---|
-| `dashboard.png` | Dashboard (top) | Filled ring gauges, attention nudges, budget bar |
-| `money-health.png` | Dashboard (mid) | Best-value-protein + Insights + Savings chart |
-| `transactions.png` | Transactions | Summary strip + categorised log |
-| `food-log.png` | Food Log | Summary strip + meals by day |
-| `forecast.png` | Forecast | Calibrated-TDEE card + projection charts |
-| `pantry.png` | Pantry | Summary strip + expiring-soon + stock |
+| `dashboard.png` | Home | Today (spend, macro rings, water), Worth knowing, This month, Money & food |
+| `money-health.png` | Home, Money & food card | Food spend vs calories, eating out vs at home, best-value protein |
+| `transactions.png` | Transactions | Figures, the log by day, the summary beside it |
+| `food-log.png` | Food Log | Today by meal against targets, earlier days, nutrition summary |
+| `forecast.png` | Forecast | Calibrated maintenance, weight and spending projections |
+| `pantry.png` | Pantry | Figures, use-these-first, stock by location |
 
-## Regenerating the demo dataset
+## Regenerating them
 
-Screenshots use generated demo data (no real personal data). To reproduce:
+They're public, so they only ever show generated demo data. Seed it into a
+throwaway database and serve that on port 8001 -- never point this at your real
+`data/app.db` (`scripts/seed_demo.py` wipes the tables it fills):
 
 ```bash
-# 1. Stop the app so the DB file is free, then back it up
-#    (VACUUM INTO gives a clean single-file snapshot)
-# 2. Seed ~6 months of realistic demo data:
-PYTHONPATH=. python scripts/seed_demo.py
-# 3. Start the app, take the screenshots
-# 4. Restore your real DB by copying the snapshot back over data/app.db
-#    and deleting data/app.db-wal / data/app.db-shm
+# a separate database, no backups, its own session storage, its own port
+set BALANCE_DB=%TEMP%alance-demo.db
+set BALANCE_NO_BACKUP=1
+set NICEGUI_STORAGE_PATH=%TEMP%alance-demo-storage
+python scripts/seed_demo.py
+set BALANCE_PORT=8001
+python run.py
 ```
 
-`scripts/seed_demo.py` wipes operational rows first (keeps categories and the
-singleton profile/goals), so only run it against a database you've backed up.
+Turn on every page in the demo's Settings (Pages → All on) and pick the Dark
+theme, then in another terminal from the project root:
+
+```bash
+python scripts/capture_screenshots.py      # BALANCE_URL defaults to :8001
+```

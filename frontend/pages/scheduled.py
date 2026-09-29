@@ -23,6 +23,7 @@ from ..components import (
     page_header,
     section_header,
     segmented,
+    sheet_dialog,
     summary_strip,
     undo_banner,
 )
@@ -44,7 +45,8 @@ from ..theme import (
 # content panel client-side (history.pushState) instead of a full browser
 # reload on every nav click.
 # ---------------------------------------------------------------------------
-def scheduled_page(embedded=False):
+def scheduled_page(embedded=False, adder=None):
+    adder = {} if adder is None else adder
     from backend.cashflow import cashflow_summary
     from backend.recurring import post_now, skip_next
 
@@ -209,7 +211,7 @@ def scheduled_page(embedded=False):
                             ui.button("Post", icon="check", on_click=lambda _, iid=i.id: _post_now(iid)).props(
                                 "unelevated dense no-caps color=primary")
 
-        with ui.expansion("Add scheduled item", icon="add").classes("w-full"):
+        with sheet_dialog("Schedule a bill or income", adder=adder):
             with ui.column().classes("gap-1 max-w-xl w-full"):
                 kind_toggle = segmented("Type", {"expense": "Expense", "income": "Income"}, "expense")
                 ui.label("Amount").classes("text-xs mt-1").style(f"color:{TEXT_DIM}")
@@ -251,6 +253,7 @@ def scheduled_page(embedded=False):
                             auto_post=auto_switch.value,
                         ))
                         session.commit()
+                    adder["close"]()
                     ui.notify("Scheduled.", type="positive")
                     content.refresh()
 

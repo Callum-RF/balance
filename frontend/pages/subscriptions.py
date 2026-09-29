@@ -26,6 +26,7 @@ from ..components import (
     page_header,
     section_header,
     segmented,
+    sheet_dialog,
     summary_strip,
     undo_banner,
 )
@@ -43,7 +44,8 @@ from ..theme import (
 # ---------------------------------------------------------------------------
 # Subscriptions
 # ---------------------------------------------------------------------------
-def subscriptions_page(embedded=False):
+def subscriptions_page(embedded=False, adder=None):
+    adder = {} if adder is None else adder
     if not embedded:
         page_header("Subscriptions", "Recurring spend and what's due next.")
     undo_container = ui.column().classes("w-full")
@@ -230,7 +232,7 @@ def subscriptions_page(embedded=False):
                             ui.label("Track")
                             ui.icon("chevron_right")
 
-      with ui.expansion("Add subscription", icon="add").classes("w-full"):
+      with sheet_dialog("Add a subscription", adder=adder):
         with ui.column().classes("gap-1 max-w-xl w-full"):
             name_input = ui.input(label="Name (e.g. Amazon Prime, or 'Sofa installments')").props("dense").classes("w-full")
             # Caption above (not a floating label): the big text-2xl value would
@@ -266,6 +268,7 @@ def subscriptions_page(embedded=False):
                     )
                     session.add(sub)
                     session.commit()
+                adder["close"]()
                 ui.notify("Subscription added.", type="positive")
                 content.refresh()
 

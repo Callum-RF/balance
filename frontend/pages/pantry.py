@@ -22,6 +22,7 @@ from ..components import (
     pill_toggle,
     section_header,
     segmented,
+    sheet_dialog,
     summary_strip,
     undo_banner,
 )
@@ -62,7 +63,9 @@ def _expiry(d):
 
 
 def pantry_page():
-    page_header("Pantry", "What's in stock, with cost and macros.")
+    adder = {}
+    page_header("Pantry", "What's in stock, with cost and macros.",
+                action=("Add", "add", lambda: adder["open"]()))
     undo_container = ui.column().classes("w-full")
 
     def resolve_item(item_id, status):
@@ -216,6 +219,7 @@ def pantry_page():
                         protein_g=protein_input.value,
                     ))
                     session.commit()
+                adder["close"]()
                 ui.notify(f"Added {name} to the {location.value}.",
                           type="positive")
                 content.refresh()
@@ -255,7 +259,7 @@ def pantry_page():
                                 ui.label("Open")
                                 ui.icon("chevron_right")
 
-        with ui.expansion("Add pantry item", icon="add").classes("w-full"):
+        with sheet_dialog("Add to the pantry", adder=adder):
             render_add_form()
 
         if not items:

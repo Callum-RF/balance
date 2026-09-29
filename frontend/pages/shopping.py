@@ -19,6 +19,7 @@ from ..components import (
     card_box_accent,
     empty_state,
     page_header,
+    pill_toggle,
     section_header,
     summary_strip,
 )
@@ -54,13 +55,15 @@ def shopping_page():
             ("Completed", str(len(items) - len(to_buy)), EMERALD) if items else None,
         ])
 
-        def _toggle(iid, val):
-            # No refresh: lets you tick several items before "Add to pantry".
+        def _toggle(iid, val, label):
+            # Only the checkout card redraws, so you can tick several in a row.
             with Session(engine) as session:
                 it = session.get(ShoppingListItem, iid)
                 if it:
                     it.done = val
                     session.add(it); session.commit()
+            label.style("text-decoration:line-through; opacity:.6" if val else "text-decoration:none; opacity:1")
+            checkout.refresh()
 
         def _del(iid):
             with Session(engine) as session:
@@ -77,21 +80,31 @@ def shopping_page():
             ui.notify(f"Added {name}.", type="positive")
             content.refresh()
 
-        with ui.row().classes("w-full items-end gap-2 flex-wrap"):
-            add_name = ui.input(label="Add an item").props("dense").classes("flex-grow")
-            add_qty = ui.input(label="Qty (optional)").props("dense").classes("w-28")
-            loc_sel = ui.select({"fridge": "Fridge", "freezer": "Freezer", "pantry": "Pantry"},
-                                value="pantry", label="Goes to").props("dense options-dense").classes("w-32")
+        # --- add bar: type and press Enter; where it goes and how many are optional ---
+        where = {"value": "pantry"}
 
-            def add_item():
-                if not add_name.value:
-                    return
-                with Session(engine) as session:
-                    session.add(ShoppingListItem(name=add_name.value, quantity_note=add_qty.value or None,
-                                                 location=loc_sel.value, source="manual"))
-                    session.commit()
-                content.refresh()
-            ui.button("Add", icon="add", on_click=add_item).props("unelevated no-caps color=primary")
+        def add_item():
+            name = (add_name.value or "").strip()
+            if not name:
+                return
+            with Session(engine) as session:
+                session.add(ShoppingListItem(name=name, quantity_note=(add_qty.value or "").strip() or None,
+                                             location=where["value"], source="manual"))
+                session.commit()
+            content.refresh()
+
+        with ui.column().classes("w-full gap-2"):
+            with ui.element("div").classes("b-toolbar"):
+                add_name = ui.input(placeholder="Add an item, e.g. Milk 2L").props(
+                    "dense outlined").classes("b-field")
+                with add_name.add_slot("prepend"):
+                    ui.icon("add_shopping_cart").classes("text-lg").style(f"color:{TEXT_DIM}")
+                add_name.on("keydown.enter", add_item)
+                ui.button("Add", on_click=add_item).props("unelevated no-caps color=primary").classes("b-head-btn")
+            with ui.row().classes("w-full items-center gap-2"):
+                pill_toggle({"fridge": "Fridge", "freezer": "Freezer", "pantry": "Pantry"}, "pantry",
+                            lambda k: where.update(value=k))
+                add_qty = ui.input(placeholder="How many? (optional)").props("dense borderless").classes("w-44")
 
         if not items:
             with card_box().classes("w-full"):
@@ -103,24 +116,31 @@ def shopping_page():
             with ui.column().classes(LIST_GROUP):
                 for i in sorted(items, key=lambda x: (x.done, (x.name or "").lower())):
                     with ui.element("div").classes("b-row").style("cursor:default; padding-left:8px"):
-                        ui.checkbox(value=i.done, on_change=lambda e, iid=i.id: _toggle(iid, e.value)).props(
-                            "color=primary")
+                        box = ui.checkbox(value=i.done).props("color=primary")
                         with ui.element("div").classes("b-row-text"):
-                            ui.label(i.name).classes("b-row-title").style(
+                            title = ui.label(i.name).classes("b-row-title").style(
                                 "text-decoration:line-through; opacity:.6" if i.done else "")
                             sub = " · ".join(x for x in (i.quantity_note, (i.location or "pantry").capitalize(),
                                                           None if i.source == "manual" else f"from {i.source}") if x)
                             ui.label(sub).classes("b-row-sub")
+                        box.on_value_change(lambda e, iid=i.id, t=title: _toggle(iid, e.value, t))
                         ui.button(icon="close", on_click=lambda _, iid=i.id: _del(iid)).props(
                             "flat round dense").classes("b-icon-btn").tooltip("Remove")
 
-        if items:
-            with card_box().classes("w-full"):
-                section_header("Bought the ticked items?",
-                               subtitle="Move them into your pantry, and record the grocery spend in one go.")
-                with ui.row().classes("w-full items-end gap-2 flex-wrap"):
-                    spend_input = ui.number(label="Total spent (optional)", format="%.2f").props(f'prefix="{CUR}"').classes("w-40")
-                    spend_cat = ui.select(category_options, value=default_grocery_cat, label="Category").props("dense options-dense").classes("w-48")
+        @ui.refreshable
+        def checkout():
+            with Session(engine) as session:
+                ticked = session.exec(select(ShoppingListItem).where(ShoppingListItem.done == True)).all()  # noqa: E712
+            if not ticked:
+                return
+            with card_box_accent().classes("w-full"):
+                section_header(f"Bought {len(ticked)} ticked item{'s' if len(ticked) != 1 else ''}?",
+                               subtitle="Move them into your pantry, and record what you spent in one go.")
+                with ui.row().classes("w-full items-end gap-2 no-wrap"):
+                    spend_input = ui.number(label="Total spent (optional)", format="%.2f").props(
+                        f'dense prefix="{CUR}"').classes("flex-1")
+                    spend_cat = ui.select(category_options, value=default_grocery_cat, label="Category").props(
+                        "dense options-dense").classes("flex-1 min-w-0")
 
                 def buy_checked():
                     moved = 0
@@ -135,10 +155,8 @@ def shopping_page():
                             session.add(Transaction(date=today, amount=spend_input.value, merchant="Groceries",
                                                     category_id=spend_cat.value, notes="From shopping list"))
                         session.commit()
-                    if not moved:
-                        ui.notify("Check some items first.", type="warning"); return
-                    ui.notify(f"Moved {moved} item(s) to pantry" + (" and logged the spend." if spend_input.value else "."),
-                              type="positive")
+                    ui.notify(f"Moved {moved} item{'s' if moved != 1 else ''} to the pantry"
+                              + (" and logged the spend." if spend_input.value else "."), type="positive")
                     content.refresh()
 
                 def clear_checked():
@@ -148,9 +166,13 @@ def shopping_page():
                         session.commit()
                     content.refresh()
 
-                with ui.row().classes("gap-2"):
-                    ui.button("Add to pantry", icon="kitchen", on_click=buy_checked).props("unelevated no-caps color=primary")
-                    ui.button("Just clear checked", icon="clear_all", on_click=clear_checked).props("flat no-caps").style(f"color:{TEXT_DIM}")
+                with ui.row().classes("w-full items-center gap-2"):
+                    ui.button("Add to pantry", icon="kitchen", on_click=buy_checked).props(
+                        "unelevated no-caps color=primary")
+                    ui.button("Just clear them", on_click=clear_checked).props("flat no-caps").style(
+                        f"color:{TEXT_DIM}")
+
+        checkout()
 
         # --- suggestions from pantry + tracked prices ---
         suggestions = []

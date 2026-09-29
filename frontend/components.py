@@ -53,14 +53,37 @@ def card_box_accent():
     return ui.column().classes(CARD_ACCENT)
 
 
-def page_header(title: str, subtitle: str = None, icon: str = None):
+def page_header(title: str, subtitle: str = None, icon: str = None, action=None):
     """A page's title: large and bold, with an optional one-line subtitle -- the
-    same heading as Medley, Cadence and Crescendo. (`icon` is accepted for the
-    callers that still pass one; the Ensemble heading doesn't use it.)"""
-    with ui.column().classes("gap-1"):
-        ui.label(title).classes("b-title")
-        if subtitle:
-            ui.label(subtitle).classes("b-subtitle")
+    same heading as Medley, Cadence and Crescendo. `action` is an optional
+    (label, icon, on_click) for the page's main button, e.g. Add, shown on the
+    right. (`icon` is accepted for older callers; the heading doesn't use it.)"""
+    with ui.element("div").classes("b-head"):
+        with ui.column().classes("gap-1 min-w-0"):
+            ui.label(title).classes("b-title")
+            if subtitle:
+                ui.label(subtitle).classes("b-subtitle")
+        if action:
+            label, act_icon, on_click = action
+            ui.button(label, icon=act_icon, on_click=on_click).props(
+                "unelevated no-caps color=primary").classes("b-head-btn")
+
+
+@contextmanager
+def sheet_dialog(title: str, subtitle: str = None, adder: dict = None):
+    """A form in a sheet (a bottom sheet on a phone, a centred card on a
+    desktop). With `adder`, registers adder["open"] / adder["close"] so a page
+    button can open it and the form can close itself when saved."""
+    dlg = ui.dialog()
+    if adder is not None:
+        adder["open"], adder["close"] = dlg.open, dlg.close
+    with dlg, ui.card().classes(f"bg-[{SURFACE}] border border-[{BORDER}] gap-3 w-full max-w-lg"):
+        with ui.row().classes("w-full items-start no-wrap"):
+            with ui.column().classes("flex-1 min-w-0 gap-0"):
+                section_header(title, subtitle=subtitle)
+            ui.button(icon="close", on_click=dlg.close).props("flat round dense").classes("b-icon-btn")
+        with ui.column().classes("w-full gap-2"):
+            yield dlg
 
 
 def summary_strip(stats, width_class: str = ""):

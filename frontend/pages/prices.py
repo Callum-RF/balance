@@ -18,6 +18,7 @@ from ..components import (
     page_header,
     pill_toggle,
     section_header,
+    sheet_dialog,
     summary_strip,
     undo_banner,
 )
@@ -45,7 +46,9 @@ def _change(first, last):
 # Prices (grocery price / inflation tracking)
 # ---------------------------------------------------------------------------
 def prices_page():
-    page_header("Prices", "Track what staple grocery items cost over time.")
+    adder = {}
+    page_header("Prices", "Track what staple grocery items cost over time.",
+                action=("Log a price", "add", lambda: adder["open"]()))
     state = {"item": None}
     undo_container = ui.column().classes("w-full")
 
@@ -65,7 +68,7 @@ def prices_page():
             biggest and biggest[1] > 0 and (f"Biggest rise · {biggest[0]}", f"{biggest[1]:+.1f}%", RED),
         ])
 
-        with ui.expansion("Log a price", icon="add").classes("w-full"):
+        with sheet_dialog("Log a price", adder=adder):
             with ui.column().classes("gap-1 max-w-xl w-full"):
                 item_input = ui.input(label="Item (be consistent, e.g. 'Milk 2L')",
                                       autocomplete=item_names).props("dense").classes("w-full")
@@ -85,6 +88,7 @@ def prices_page():
                                                      date=date.fromisoformat(date_input.value)))
                         session.commit()
                     state["item"] = name
+                    adder["close"]()
                     ui.notify(f"Logged {name} at {CUR}{price_input.value:,.2f}.", type="positive")
                     content.refresh()
 

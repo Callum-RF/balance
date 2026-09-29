@@ -338,6 +338,13 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   .b-fig-num { font-size: 24px; }
 }
 
+/* Compact figures, for inside a sheet: always one row. */
+.b-figs.compact { grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; }
+.b-figs.compact .b-fig { padding: 2px 10px 2px 0; }
+.b-figs.compact .b-fig + .b-fig { padding-left: 12px; border-left: 1px solid var(--b-border); }
+.b-figs.compact .b-fig-num { font-size: 22px; }
+@media (max-width: 640px) { .b-figs.compact .b-fig-num { font-size: 18px; } }
+
 /* Pills: tabs and quick filters. */
 .b-pills { display: flex; gap: 6px; flex-wrap: wrap; }
 .b-pill { height: 34px; padding: 0 15px; border-radius: 999px; display: inline-flex;
@@ -392,6 +399,8 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 .b-bar > div { height: 100%; border-radius: 999px; }
 .b-monthnav { display: flex; align-items: center; gap: 4px; }
 .b-monthnav .b-month { font-size: 17px; font-weight: 750; min-width: 150px; text-align: center; }
+.b-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; }
+.b-head-btn.q-btn { flex: none; margin-top: 6px; border-radius: 999px; padding: 0 16px; min-height: 40px; }
 .b-row-end { display: flex; align-items: center; gap: 6px; flex: none; color: var(--b-text-dim);
   font-size: 13.5px; }
 .b-row-end .q-toggle { margin-right: -6px; }

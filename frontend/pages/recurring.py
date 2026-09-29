@@ -18,10 +18,14 @@ def recurring_page(tab=None):
         page_header("Recurring", "Turn on Subscriptions or Scheduled in Settings to use this page.")
         return
     tab = tab if tab in tabs else next(iter(tabs))
-    page_header("Recurring", "What repeats, and what's due next.")
+    adders = {k: {} for k in tabs}
+    state = {"tab": tab}
+    page_header("Recurring", "What repeats, and what's due next.",
+                action=("Add", "add", lambda: adders[state["tab"]]["open"]()))
     views = {}
 
     def show(key):
+        state["tab"] = key
         for k, v in views.items():
             v.classes(remove="b-off") if k == key else v.classes(add="b-off")
 
@@ -29,5 +33,5 @@ def recurring_page(tab=None):
         pill_toggle(tabs, tab, show)
     for key in tabs:
         with ui.column().classes("w-full gap-4 sm:gap-6" + ("" if key == tab else " b-off")) as view:
-            (subscriptions_page if key == "subscriptions" else scheduled_page)(embedded=True)
+            (subscriptions_page if key == "subscriptions" else scheduled_page)(embedded=True, adder=adders[key])
         views[key] = view

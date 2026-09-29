@@ -17,6 +17,7 @@ from ..components import (
     list_row,
     page_header,
     section_header,
+    sheet_dialog,
     summary_strip,
     undo_banner,
 )
@@ -48,7 +49,9 @@ def accounts_page():
         snapshot_if_due,
     )
 
-    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.")
+    adder = {}
+    page_header("Accounts & Net Worth", "Balances across accounts, tracked over time.",
+                action=("Add", "add", lambda: adder["open"]()))
     undo_container = ui.column().classes("w-full")
 
     @ui.refreshable
@@ -139,7 +142,7 @@ def accounts_page():
                     ui.button("Save", on_click=save).props("color=primary unelevated no-caps")
             dialog.open()
 
-        with ui.expansion("Add account", icon="add").classes("w-full"):
+        with sheet_dialog("Add an account", adder=adder):
             with ui.column().classes("gap-1 max-w-xl w-full"):
                 a_name = ui.input(label="Account name (e.g. Monzo Current)").props("dense").classes("w-full")
                 with ui.grid().classes("w-full grid-cols-1 sm:grid-cols-2 gap-2"):
@@ -155,6 +158,7 @@ def accounts_page():
                         session.add(Account(name=a_name.value, type=a_type.value, balance=a_bal.value or 0))
                         session.commit()
                         snapshot_if_due(session, today)
+                    adder["close"]()
                     ui.notify("Account added.", type="positive")
                     content.refresh()
                 ui.button("Add account", on_click=add_account).props("color=primary unelevated")

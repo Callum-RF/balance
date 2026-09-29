@@ -10,7 +10,6 @@ from sqlmodel import Session, select
 
 from backend.database import engine
 from backend.models import AppSettings
-from backend.modules import MODULES
 
 from . import theme as _theme
 from .common import (
@@ -26,6 +25,7 @@ from .common import (
 from .components import pill_toggle
 from .theme import (
     _TOKEN_KEYS,
+    AMBER,
     BG,
     BORDER,
     EMERALD,
@@ -36,6 +36,7 @@ from .theme import (
     TEXT,
     TEXT_DIM,
     THEMES,
+    VIOLET,
     _var,
     alpha,
 )
@@ -454,6 +455,22 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
 .b-streak .n { font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
 .b-streak .l { font-size: 12px; color: var(--b-text-dim); line-height: 1.25; }
 
+/* More sheet: tiles, four across. */
+.b-moresheet .b-sheet-label { padding: 12px 2px 8px; }
+.b-moresheet .b-sheet-label:first-child { padding-top: 0; }
+.b-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.b-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 8px;
+  border-radius: 14px; cursor: pointer; transition: background .12s; text-align: center; }
+.b-tile:hover { background: var(--b-surface); }
+.b-tile.here { background: color-mix(in srgb, var(--b-indigo) 14%, transparent); }
+.b-tile-icon { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center;
+  justify-content: center; }
+.b-tile-icon .q-icon { font-size: 23px; }
+.b-tile-label { font-size: 12.5px; font-weight: 600; line-height: 1.2; color: var(--b-text); }
+.b-you { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--b-border); }
+.b-you .b-pill .q-icon { font-size: 17px; }
+
 /* Quick-add sheet */
 .b-addsheet { width: min(560px, 100vw); max-width: 100vw !important; max-height: 88vh;
   border-radius: 22px 22px 0 0 !important; padding: 0 !important; overflow: hidden;
@@ -509,6 +526,16 @@ document.addEventListener('keydown', function (ev) {
     if (window.emitEvent) emitEvent('b-palette');
   }
 });
+// Marks the More sheet's tile for the page you're on (the sheet's tiles only
+// exist while it's open, so it runs when the sheet opens).
+window.bMarkTiles = function () {
+  var path = window.location.pathname;
+  document.querySelectorAll('.b-tile[data-route]').forEach(function (t) {
+    var r = t.getAttribute('data-route');
+    t.classList.toggle('here', r === path
+      || (r === '/recurring' && (path === '/subscriptions' || path === '/scheduled')));
+  });
+};
 (function () {
   function updateNav() {
     var path = window.location.pathname, hit = false;
@@ -543,18 +570,79 @@ def _quick_add_items(enabled):
     return items
 
 
+# Tile names in the More sheet, where space is tight.
+_SHORT = {"Savings Goals": "Savings", "Monthly Report": "Report"}
+# Not tiles: Import lives in Transactions' Filters menu, and Subscriptions +
+# Scheduled share the one Recurring page.
+
+
+# The More sheet's groups, in tile order: rows of four fill neatly.
+_MORE_GROUPS = [
+    ("Money", ["/income", "/accounts", "/recurring", "/savings"]),
+    ("Food & kitchen", ["/pantry", "/recipes", "/shopping", "/prices"]),
+    ("Insights", ["/forecast", "/reports"]),
+]
+
+
 def _more_sections(enabled):
-    """Everything not on the dock, grouped the way the old sidebar was."""
-    on_dock = {route for _, route, _ in DOCK}
-    by_tier = {"money": [], "health": [], "power": []}
-    for label, route, icon, mod in NAV_ITEMS:
-        if mod and module_enabled(mod, enabled) and route not in on_dock:
-            by_tier[MODULES[mod][1]].append((label, route, icon))
-    sections = [(title, by_tier[key]) for title, key in
-                (("Money", "money"), ("Health", "health"), ("More", "power")) if by_tier[key]]
-    sections.append(("You", [(label, route, icon) for label, route, icon, _ in NAV_ITEMS
-                             if route in ("/profile", "/settings")]))
+    """Everything not on the dock, as (title, colour, [(label, route, icon)]),
+    skipping pages whose module is off."""
+    nav = {route: (label, icon, mod) for label, route, icon, mod in NAV_ITEMS}
+    nav["/recurring"] = ("Recurring", "event_repeat", None)
+    recurring_on = module_enabled("subscriptions", enabled) or module_enabled("scheduled", enabled)
+    colors = {"Money": EMERALD, "Food & kitchen": AMBER, "Insights": VIOLET}
+    sections = []
+    for title, routes in _MORE_GROUPS:
+        items = []
+        for route in routes:
+            label, icon, mod = nav[route]
+            if (route == "/recurring" and recurring_on) or (route != "/recurring" and module_enabled(mod, enabled)):
+                items.append((_SHORT.get(label, label), route, icon))
+        if items:
+            sections.append((title, colors[title], items))
+    # Anything added to NAV_ITEMS later but not grouped above still gets a tile.
+    placed = {r for _, routes in _MORE_GROUPS for r in routes} | {r for _, r, _ in DOCK} | {
+        "/import", "/subscriptions", "/scheduled", "/profile", "/settings"}
+    extra = [(label, route, icon) for label, route, icon, mod in NAV_ITEMS
+             if route not in placed and module_enabled(mod, enabled)]
+    if extra:
+        sections.append(("Other", VIOLET, extra))
     return sections
+
+
+def more_sheet(enabled):
+    """The dock's More: every other page as a grid of tiles in a sheet that
+    rises from the dock, so the lot fits on one phone screen. Profile and
+    Settings sit in a row underneath. Returns open()."""
+    with ui.dialog().props("position=bottom") as dlg, ui.card().classes("b-addsheet b-moresheet"):
+        with ui.element("div").classes("b-addsheet-head w-full"):
+            ui.label("More").classes("b-addsheet-title")
+            ui.space()
+            ui.button(icon="close", on_click=dlg.close).props("flat round dense").classes(
+                "b-icon-btn").tooltip("Close")
+        with ui.element("div").classes("b-addsheet-body w-full"):
+            for title, color, items in _more_sections(enabled):
+                ui.label(title).classes("b-sheet-label")
+                with ui.element("div").classes("b-tiles"):
+                    for label, route, icon in items:
+                        with ui.element("div").classes("b-tile").props(f'data-route="{route}"').on(
+                                "click", lambda r=route: (dlg.close(), ui.navigate.to(r))):
+                            with ui.element("div").classes("b-tile-icon").style(
+                                    f"background:{alpha(color, '22')}; color:{color}"):
+                                ui.icon(icon)
+                            ui.label(label).classes("b-tile-label")
+            with ui.element("div").classes("b-you"):
+                for label, route, icon in (("Profile & Goals", "/profile", "person"),
+                                           ("Settings", "/settings", "settings")):
+                    with ui.element("div").classes("b-pill").on(
+                            "click", lambda r=route: (dlg.close(), ui.navigate.to(r))):
+                        ui.icon(icon).classes("mr-1")
+                        ui.label(label)
+    def open_sheet():
+        dlg.open()
+        ui.run_javascript("setTimeout(window.bMarkTiles, 60)")
+
+    return open_sheet
 
 
 _ADD_KINDS = {"expense": "Expense", "food": "Food", "income": "Income"}
@@ -739,6 +827,7 @@ def shell():
             session.commit()
 
     open_sheet = quick_add_sheet(enabled)
+    open_more = more_sheet(enabled)
     ui.context.client.b_open_sheet = open_sheet     # common.open_add
     open_palette = command_palette(toggle_theme, enabled, open_sheet)
 
@@ -765,17 +854,9 @@ def shell():
             with ui.link(target=route).classes("b-dock-item").tooltip(label):
                 ui.icon(icon)
                 ui.label(label).classes("b-dock-label")
-        with ui.element("div").classes("b-dock-item b-more").tooltip("More"):
+        with ui.element("div").classes("b-dock-item b-more").tooltip("More").on("click", open_more):
             ui.icon("apps")
             ui.label("More").classes("b-dock-label")
-            with ui.menu().props('anchor="top right" self="bottom right"').classes("b-sheet"):
-                for title, items in _more_sections(enabled):
-                    ui.label(title).classes("b-sheet-label")
-                    for label, route, icon in items:
-                        with ui.menu_item(on_click=lambda r=route: ui.navigate.to(r)):
-                            with ui.row().classes("items-center gap-3 no-wrap"):
-                                ui.icon(icon)
-                                ui.label(label)
 
     # Room for the fixed top bar above and the floating dock below. Inline, as
     # PAGE's own responsive padding (sm:p-6) would otherwise win over a class.

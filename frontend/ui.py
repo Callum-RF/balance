@@ -23,18 +23,18 @@ from .pages.pantry import pantry_page
 from .pages.prices import prices_page
 from .pages.profile import profile_page
 from .pages.recipes import recipes_page
+from .pages.recurring import recurring_page
 from .pages.reports import reports_page
 from .pages.savings import savings_page
-from .pages.scheduled import scheduled_page
 from .pages.settings import render_lock_screen, settings_page
 from .pages.shopping import shopping_page
-from .pages.subscriptions import subscriptions_page
 from .pages.transactions import add_transaction_page, transactions_page
 from .shell import _module_guard, shell
 
 ROUTES = {
     "/": dashboard,
-    "/scheduled": scheduled_page,
+    "/recurring": recurring_page,
+    "/scheduled": lambda: recurring_page("scheduled"),
     "/recipes": recipes_page,
     "/shopping": shopping_page,
     "/savings": savings_page,
@@ -48,7 +48,7 @@ ROUTES = {
     "/add-food": add_food_page,
     "/food-log": food_log_page,
     "/pantry": pantry_page,
-    "/subscriptions": subscriptions_page,
+    "/subscriptions": lambda: recurring_page("subscriptions"),
     "/prices": prices_page,
     "/forecast": forecast_page,
     "/profile": profile_page,

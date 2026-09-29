@@ -23,6 +23,7 @@ from ..common import (
     download_csv,
     format_date_header,
     group_by_date,
+    module_enabled,
     set_page_refresh,
 )
 from ..components import (
@@ -331,6 +332,11 @@ def transactions_page():
                             ui.button("Export CSV", icon="download",
                                       on_click=lambda: export_transactions()).props(
                                 "outline dense no-caps color=primary")
+                        if module_enabled("import"):
+                            ui.separator()
+                            ui.button("Import a bank statement", icon="upload_file",
+                                      on_click=lambda: ui.navigate.to("/import")).props(
+                                "flat dense no-caps color=primary").classes("self-start")
         with ui.element("div").classes("b-chips"):
             chips = ui.element("div").classes("b-chips")
             result_summary = ui.label().classes("b-count")

@@ -43,8 +43,9 @@ from ..theme import (
 # ---------------------------------------------------------------------------
 # Subscriptions
 # ---------------------------------------------------------------------------
-def subscriptions_page():
-    page_header("Subscriptions", "Recurring spend and what's due next.")
+def subscriptions_page(embedded=False):
+    if not embedded:
+        page_header("Subscriptions", "Recurring spend and what's due next.")
     undo_container = ui.column().classes("w-full")
 
     @ui.refreshable

@@ -44,11 +44,12 @@ from ..theme import (
 # content panel client-side (history.pushState) instead of a full browser
 # reload on every nav click.
 # ---------------------------------------------------------------------------
-def scheduled_page():
+def scheduled_page(embedded=False):
     from backend.cashflow import cashflow_summary
     from backend.recurring import post_now, skip_next
 
-    page_header("Scheduled", "Recurring transactions and upcoming cashflow.")
+    if not embedded:
+        page_header("Scheduled", "Recurring transactions and upcoming cashflow.")
     undo_container = ui.column().classes("w-full")
 
     @ui.refreshable

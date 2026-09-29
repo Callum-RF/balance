@@ -62,7 +62,7 @@ def _steps(current):
 # ---------------------------------------------------------------------------
 def import_statement_page():
     page_header("Import a statement",
-                "Bring in a CSV or PDF from your bank -- nothing is saved until you've reviewed it.")
+                "Bring in a CSV or PDF from your bank — nothing is saved until you've reviewed it.")
 
     step_container = ui.column().classes("w-full gap-4")
     state = {
@@ -99,7 +99,7 @@ def import_statement_page():
                 ui.label("Choose a statement").classes("b-drop-title")
                 ui.label("CSV or PDF · or drag it here").classes("b-drop-sub")
             upload_status = ui.label().classes("text-sm")
-            ui.label("Most banks let you download a statement as CSV from their website or app -- that gives "
+            ui.label("Most banks let you download a statement as CSV from their website or app — that gives "
                      "the cleanest import. PDFs work too: Balance picks out the lines that look like a date "
                      "next to an amount.").classes("b-hint").style("margin:0")
 
@@ -217,7 +217,7 @@ def import_statement_page():
 
                 if not candidates:
                     error_label.set_text(
-                        "Couldn't parse any rows with that mapping -- double check the date format and columns."
+                        "Couldn't parse any rows with that mapping — double check the date format and columns."
                     )
                     return
 
@@ -296,7 +296,7 @@ def import_statement_page():
                 ("Income", str(sum(1 for c in state["candidates"] if c["is_income"])), EMERALD),
                 ("Look like duplicates", str(num_dupes), RED, "left unticked") if num_dupes else None,
             ])
-            ui.label("Everything below can be edited -- fix anything the file got wrong, and untick rows you "
+            ui.label("Everything below can be edited — fix anything the file got wrong, and untick rows you "
                      "don't want.").classes("b-hint").style("margin:0")
 
             row_cat_selects = []  # (candidate, select) pairs, for "set every expense" + income toggling

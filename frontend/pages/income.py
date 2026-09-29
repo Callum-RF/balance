@@ -231,7 +231,7 @@ def income_page():
                 if (search_input.value or "").strip() or source_filter.value:
                     empty_state("No income matches these filters.", "search_off")
                 else:
-                    empty_state("No income logged yet -- tap + and choose Income.", "payments")
+                    empty_state("No income logged yet — tap + and choose Income.", "payments")
             for group_date, day_entries in group_by_date(shown):
                 with ui.element("div").classes("b-day"):
                     ui.label(format_date_header(group_date))

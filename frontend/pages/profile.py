@@ -61,7 +61,7 @@ def _capfield(label, builder):
 # Profile & Goals
 # ---------------------------------------------------------------------------
 def profile_page():
-    page_header("Profile & Goals", "Your weight, daily targets and budget -- and the details behind them.")
+    page_header("Profile & Goals", "Your weight, daily targets and budget — and the details behind them.")
 
     @ui.refreshable
     def figures():
@@ -138,7 +138,7 @@ def _weight_view(figures):
         with Session(engine) as session:
             trend = compute_weight_trend(session, WEIGHT_TREND_WINDOWS.get(state["window"], 7))
         with trend_card:
-            section_header("Trend", subtitle="Weight bounces daily with water and food -- the line "
+            section_header("Trend", subtitle="Weight bounces daily with water and food — the line "
                                               "averages it out so the real direction shows")
             if not trend["available"] or trend["num_entries"] < 2:
                 empty_state("Log at least two weigh-ins to see your trend.", "show_chart")
@@ -274,7 +274,7 @@ def _targets_view(figures):
             fiber_g = goal_row("Fiber", goals.fiber_g, "fiber_g", "g", SKY)
             water_g = goal_row("Water", goals.water_ml, "water_ml", "ml", SKY, last=True)
         with ui.expansion("Daily limits", icon="do_not_disturb_on",
-                          caption="Ceilings, not targets -- a day is flagged when it goes over").props(
+                          caption="Ceilings, not targets — a day is flagged when it goes over").props(
                 "dense").classes("w-full mt-2"):
             with ui.column().classes("w-full gap-0"):
                 sugar_lim = goal_row("Added sugar", goals.sugar_limit_g, "sugar_limit_g", "g", RED)
@@ -313,7 +313,7 @@ def _targets_view(figures):
         fiber_g.value = round(cals / 1000 * 14)
         water_g.value = int(round(weight * 35 / 50) * 50)
         label = {"maintain": "maintaining", "lose": "losing fat", "gain": "building muscle"}[direction]
-        note.set_text(f"Estimated for {label} at your activity level -- review, then Save.")
+        note.set_text(f"Estimated for {label} at your activity level — review, then Save.")
         note.style(f"color:{EMERALD}")
 
     def save():
@@ -337,7 +337,7 @@ def _budget_view(figures):
         overall = session.exec(select(BudgetTarget).where(BudgetTarget.category_id == None)).first()  # noqa: E711
 
     with card_box().classes("w-full"):
-        section_header("Monthly budget", subtitle="Your whole month's spending -- the bar on the dashboard")
+        section_header("Monthly budget", subtitle="Your whole month's spending — the bar on the dashboard")
         with ui.row().classes("w-full items-end gap-3 no-wrap"):
             budget_input = ui.number(value=overall.monthly_amount if overall else None, format="%.2f").props(
                 f'dense outlined prefix="{CUR}" input-class="text-2xl font-bold"').classes("flex-1")

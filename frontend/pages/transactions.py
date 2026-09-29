@@ -76,7 +76,7 @@ def render_add_transaction_form(on_saved=None, compact=False):
 
         with ui.expansion("Attach receipt photo (optional)", icon="camera_alt").classes("w-full mb-1") as receipt_exp:
             ui.label(
-                "Just keeps a copy for your own reference -- nothing is read automatically. "
+                "Just keeps a copy for your own reference — nothing is read automatically. "
                 "Type the merchant/amount/date yourself while looking at it."
             ).classes("text-xs mb-2").style(f"color:{TEXT_DIM}")
             receipt_photo_path = {"value": None}
@@ -131,7 +131,7 @@ def render_add_transaction_form(on_saved=None, compact=False):
 
         split_toggle = ui.switch("Split into multiple categorized items", value=False).props("dense color=primary").classes("mt-2")
         split_help = ui.label(
-            "e.g. one supermarket trip that covered both groceries and a book -- each item "
+            "e.g. one supermarket trip that covered both groceries and a book — each item "
             "gets its own category and becomes its own transaction, sharing this date/merchant."
         ).classes("text-xs -mt-1 mb-1").style(f"color:{TEXT_DIM}")
 
@@ -408,7 +408,7 @@ def transactions_page():
                 if filters_active:
                     empty_state("No transactions match these filters.", "search_off")
                 else:
-                    empty_state("No transactions yet -- tap + to add your first one.", "receipt_long")
+                    empty_state("No transactions yet — tap + to add your first one.", "receipt_long")
             for group_date, day_transactions in group_by_date(shown):
                 day_total = sum(t.amount for t in day_transactions)
                 with ui.element("div").classes("b-day"):

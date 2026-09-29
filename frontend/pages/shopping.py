@@ -112,7 +112,7 @@ def shopping_page():
 
         if not items:
             with card_box().classes("w-full"):
-                empty_state("Your list is empty -- add items above, or pull from Suggestions below.", "shopping_cart")
+                empty_state("Your list is empty — add items above, or pull from Suggestions below.", "shopping_cart")
         # The list, grouped by where things go once bought; ticked ones sink.
         for place, place_label in PLACES.items():
             group = [i for i in items if (i.location if i.location in PLACES else "pantry") == place]
@@ -147,7 +147,7 @@ def shopping_page():
             n = len(ticked)
             with card_box_accent().classes("w-full"):
                 section_header(f"Bought {n} ticked item{'s' if n != 1 else ''}?",
-                               subtitle=("Food goes into your pantry, misc just comes off the list -- and you can "
+                               subtitle=("Food goes into your pantry, misc just comes off the list — and you can "
                                          "record what you spent in one go." if food and len(food) < n else
                                          "They come off the list, and you can record what you spent." if not food else
                                          "Move them into your pantry, and record what you spent in one go."))
@@ -179,7 +179,7 @@ def shopping_page():
                         parts.append(f"moved {moved} to the pantry")
                     if cleared:
                         parts.append(f"ticked off {cleared} misc")
-                    msg = " and ".join(parts).capitalize() + (" -- spend logged." if spend_input.value else ".")
+                    msg = " and ".join(parts).capitalize() + (" — spend logged." if spend_input.value else ".")
                     ui.notify(msg, type="positive")
                     content.refresh()
 
@@ -207,14 +207,14 @@ def shopping_page():
                 nm = (p.name or "").strip()
                 if days <= 7 and nm and nm.lower() not in seen:
                     seen.add(nm.lower())
-                    reason = "expired -- restock" if days < 0 else (f"expires in {days}d -- restock")
+                    reason = "expired — restock" if days < 0 else (f"expires in {days}d — restock")
                     suggestions.append((nm, p.location or "pantry", "pantry", reason))
         seen |= active_pantry_names
         for p in pantry:
             nm = (p.name or "").strip()
             if p.status in ("consumed", "thrown_away", "expired") and nm and nm.lower() not in seen:
                 seen.add(nm.lower())
-                suggestions.append((nm, p.location or "pantry", "pantry", f"{p.status.replace('_', ' ')} -- rebuy?"))
+                suggestions.append((nm, p.location or "pantry", "pantry", f"{p.status.replace('_', ' ')} — rebuy?"))
         for pr in prices:
             nm = (pr.item_name or "").strip()
             if nm and nm.lower() not in seen:
@@ -224,7 +224,7 @@ def shopping_page():
         if suggestions:
             with card_box_accent().classes("w-full gap-1"):
                 section_header("Suggestions",
-                               subtitle="Running low, used up or expiring -- and things you buy repeatedly")
+                               subtitle="Running low, used up or expiring — and things you buy repeatedly")
                 with ui.column().classes("w-full gap-0"):
                     for nm, loc, src, reason in suggestions[:20]:
                         with ui.element("div").classes("b-nudge").on(
@@ -233,7 +233,7 @@ def shopping_page():
                                 f"background:{AMBER if 'expir' in reason else INDIGO}")
                             with ui.column().classes("b-nudge-text gap-0"):
                                 ui.label(nm).classes("font-semibold")
-                                ui.label(reason.replace(" -- ", " · ")).classes("text-xs").style(f"color:{TEXT_DIM}")
+                                ui.label(reason.replace(" — ", " · ")).classes("text-xs").style(f"color:{TEXT_DIM}")
                             with ui.element("div").classes("b-nudge-cta"):
                                 ui.label("Add")
                                 ui.icon("add")

@@ -264,7 +264,7 @@ def pantry_page():
 
         if not items:
             with card_box().classes("w-full"):
-                empty_state("Your pantry is empty -- add what's in stock above.", "kitchen")
+                empty_state("Your pantry is empty — add what's in stock above.", "kitchen")
 
         # Soonest-to-expire first within each location; undated items sink.
         def expiry_sort_key(item):

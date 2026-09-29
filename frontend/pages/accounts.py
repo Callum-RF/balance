@@ -186,7 +186,7 @@ def accounts_page(embedded=False, adder=None):
 
         if not accounts:
             with card_box().classes("w-full"):
-                empty_state("No accounts yet -- add your current, savings, cash or credit accounts to track net worth.",
+                empty_state("No accounts yet — add your current, savings, cash or credit accounts to track net worth.",
                             "account_balance")
 
         for title, types in (("Assets", ASSET_TYPES), ("Liabilities", LIABILITY_TYPES)):

@@ -66,10 +66,10 @@ def savings_page(embedded=False, adder=None):
                 text, color = (f"About {CUR}{per_week:,.0f} a week. Log a few weeks of spending and Balance "
                                "will show where it could come from.", TEXT_DIM)
             elif per_month <= disc:
-                text, color = (f"About {CUR}{per_week:,.0f} a week -- {per_month / disc * 100:.0f}% of your "
+                text, color = (f"About {CUR}{per_week:,.0f} a week — {per_month / disc * 100:.0f}% of your "
                                f"~{CUR}{disc:,.0f}/month flexible spending. Doable.", EMERALD)
             else:
-                text, color = (f"That's more than your ~{CUR}{disc:,.0f}/month of flexible spending -- even all of "
+                text, color = (f"That's more than your ~{CUR}{disc:,.0f}/month of flexible spending — even all of "
                                f"it would take ~{remaining / max(disc, 1):.0f} months.", AMBER)
             ui.label(text).classes("b-hint").style(f"margin:0; color:{color}")
 
@@ -175,7 +175,7 @@ def savings_page(embedded=False, adder=None):
 
         if not goals:
             with card_box().classes("w-full"):
-                empty_state("No savings goals yet -- add one above to start a sinking fund.", "savings")
+                empty_state("No savings goals yet — add one above to start a sinking fund.", "savings")
 
         for g in goals:
             saved = g.saved_amount or 0
@@ -243,7 +243,7 @@ def savings_and_worth_page():
                     pass
             if worth_on:
                 with setting_row("account_balance", INDIGO, "An account",
-                                 "A current or savings account, cash, a card or a loan -- for net worth",
+                                 "A current or savings account, cash, a card or a loan — for net worth",
                                  on_click=lambda: (chooser.close(), adders["acct"]["open"]())):
                     pass
 

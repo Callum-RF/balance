@@ -115,13 +115,13 @@ def _dashboard_body():
     if 5 <= h < 12:
         greeting = "Good morning"
         focus = (f"Yesterday: {CUR}{y_spend:,.0f} spent · {y_cal:,.0f} kcal. Log breakfast to start the day."
-                 if (y_spend or y_cal) else "A fresh day -- log a meal or an expense to get going.")
+                 if (y_spend or y_cal) else "A fresh day — log a meal or an expense to get going.")
     elif 12 <= h < 18:
         greeting = "Good afternoon"
         if goals.protein_g and protein_today < goals.protein_g:
-            focus = f"{protein_today:,.0f}g protein so far -- {goals.protein_g - protein_today:,.0f}g to go. Logged lunch?"
+            focus = f"{protein_today:,.0f}g protein so far — {goals.protein_g - protein_today:,.0f}g to go. Logged lunch?"
         elif goals.protein_g:
-            focus = f"Protein goal already hit ({protein_today:,.0f}g) -- nice. {CUR}{spend_today:,.0f} spent so far."
+            focus = f"Protein goal already hit ({protein_today:,.0f}g) — nice. {CUR}{spend_today:,.0f} spent so far."
         else:
             focus = f"{CUR}{spend_today:,.0f} spent so far today."
     else:
@@ -135,7 +135,7 @@ def _dashboard_body():
     if first_run:
         with card_box_accent().classes("w-full"):
             section_header("Welcome to Balance",
-                           subtitle="What you spend and what it does to your body -- in one place.")
+                           subtitle="What you spend and what it does to your body — in one place.")
             ui.label("Log one expense and one meal and this page comes alive: you'll see how your money and "
                      "your health line up. Targets start with sensible defaults you can change any time.").classes("text-sm")
             with ui.row().classes("gap-2 flex-wrap"):
@@ -269,7 +269,7 @@ def _today_card(today, goals, overall_budget, spent_this_month, days_left):
                         "font-semibold")
                     if is_today and pace is not None:
                         ui.label(f"{CUR}{pace:,.0f} a day keeps you on budget"
-                                 + (" -- over for today" if spent > pace else "")).classes("text-xs").style(
+                                 + (" — over for today" if spent > pace else "")).classes("text-xs").style(
                             f"color:{RED if spent > pace else TEXT_DIM}")
                     elif is_today and over_by is not None:
                         ui.label(f"This month is {CUR}{over_by:,.0f} over budget").classes("text-xs").style(
@@ -351,12 +351,12 @@ def _worth_knowing(today, goals, food_today, protein_today, categories, category
 
     def budget_item(label, spent, target):
         if spent > target:
-            add(f"{label} {CUR}{spent:,.0f}/{CUR}{target:,.0f} -- {CUR}{spent - target:,.0f} over budget", RED,
+            add(f"{label} {CUR}{spent:,.0f}/{CUR}{target:,.0f} — {CUR}{spent - target:,.0f} over budget", RED,
                 "Review", "/transactions")
         else:
             per_day = (target - spent) / max(days_left, 1)
             tail = (f", {CUR}{per_day:,.0f}/day for {days_left} days to stay under" if days_left
-                    else " -- last day of the month")
+                    else " — last day of the month")
             add(f"{label} {CUR}{spent:,.0f}/{CUR}{target:,.0f}{tail}",
                 AMBER if spent / target >= 0.8 else EMERALD, "Review", "/transactions")
 
@@ -423,7 +423,7 @@ def _worth_knowing(today, goals, food_today, protein_today, categories, category
         if not items:
             with ui.row().classes("items-center gap-2 py-1"):
                 ui.icon("check_circle").classes("text-lg").style(f"color:{EMERALD}")
-                ui.label("You're on track -- nothing needs a look.").classes("text-sm")
+                ui.label("You're on track — nothing needs a look.").classes("text-sm")
         rows = ui.column().classes("w-full gap-0")
         extra = ui.column().classes("w-full gap-0 b-off")
         for n, (_rank, text, color, cta, route) in enumerate(items):
@@ -466,10 +466,10 @@ def _money_and_food(today, categories):
     days_logged = len({f.date for f in foods if f.calories})
 
     with card_box().classes("w-full gap-2"):
-        section_header("Money & food", subtitle="Last 4 weeks -- what your eating costs")
+        section_header("Money & food", subtitle="Last 4 weeks — what your eating costs")
         if days_logged < 5 or food_spend <= 0:
             ui.label("Log your meals and your food shopping (Groceries, Eating Out) for a week or two and this "
-                     "shows what your eating costs -- per calorie, at home and out.").classes("b-hint").style("margin:0")
+                     "shows what your eating costs — per calorie, at home and out.").classes("b-hint").style("margin:0")
         else:
             per_k = food_spend / kcal * 1000 if kcal else None
             summary_strip([
@@ -498,7 +498,7 @@ def _money_and_food(today, categories):
                     ratio = out_per / home_per if home_per else 0
                     tone = AMBER if ratio >= 1.5 else TEXT_DIM
                     ui.label(f"Out costs {CUR}{out_per:,.2f} per 1,000 kcal, home {CUR}{home_per:,.2f}"
-                             + (f" -- {ratio:.1f}× as much." if ratio >= 1.5 else ".")).classes(
+                             + (f" — {ratio:.1f}× as much." if ratio >= 1.5 else ".")).classes(
                         "text-sm").style(f"color:{tone}")
             # Best value protein, from priced pantry items.
             value = sorted(((it.protein_g / it.price, it.name) for it in pantry

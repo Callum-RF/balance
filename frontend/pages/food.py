@@ -363,7 +363,7 @@ def food_log_page():
                                 with ui.element("div").classes("b-row-icon").style(
                                         f"background:{alpha(color, '14')}; color:{color}"):
                                     ui.icon(icon)
-                                ui.label(f"Nothing yet -- add {m}").classes("b-row-sub")
+                                ui.label(f"Nothing yet — add {m}").classes("b-row-sub")
                         for e in entries:
                             sub = f"{e.protein_g:,.0f}g protein" if e.protein_g else (e.tag or "")
                             list_row(icon, color, e.food_name, sub, f"{e.calories or 0:,.0f} kcal",

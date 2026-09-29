@@ -151,7 +151,7 @@ def forecast_page():
                         f"Calibrated to you: over {calib['span_days']} days your weight changed "
                         f"{calib['weight_change_kg']:+.2f} kg while you averaged {calib['avg_intake']:,.0f} kcal/day "
                         f"({calib['logged_days']} days logged). By energy balance that's a real maintenance of "
-                        f"~{calib['tdee']:,.0f} kcal/day, against the formula's {result['tdee_formula']:,.0f} -- "
+                        f"~{calib['tdee']:,.0f} kcal/day, against the formula's {result['tdee_formula']:,.0f} — "
                         "the forecast uses yours."
                     ).classes("text-sm")
                 else:
@@ -162,7 +162,7 @@ def forecast_page():
                     ).classes("text-sm")
                 ui.label(
                     "Weight change uses the ~7,700 kcal ≈ 1 kg rule of thumb, and spending your 30-day average. "
-                    "It's a projection of current habits -- not a guarantee, or medical or financial advice."
+                    "It's a projection of current habits — not a guarantee, or medical or financial advice."
                 ).classes("b-hint").style("margin:4px 0 0")
 
     render()

@@ -75,12 +75,12 @@ def recurring_page(tab=None):
         with ui.column().classes(LIST_GROUP):
             if subs_on:
                 with setting_row("autorenew", INDIGO, "A subscription",
-                                 "Netflix, the gym, a phone contract -- or something paid off in instalments",
+                                 "Netflix, the gym, a phone contract — or something paid off in instalments",
                                  on_click=lambda: (chooser.close(), adders["sub"]["open"]())):
                     pass
             if sched_on:
                 with setting_row("event_repeat", EMERALD, "A bill or income",
-                                 "Rent, council tax, your salary -- logged for you on the day, or waiting for a tap",
+                                 "Rent, council tax, your salary — logged for you on the day, or waiting for a tap",
                                  on_click=lambda: (chooser.close(), adders["sched"]["open"]())):
                     pass
 
@@ -309,7 +309,7 @@ def recurring_page(tab=None):
                             with ui.column().classes("b-nudge-text gap-0"):
                                 ui.label(f"{lbl} · {'+' if i.kind == 'income' else '-'}{CUR}{i.amount:,.2f}").classes(
                                     "font-semibold")
-                                ui.label(f"Due {format_date_header(i.next_date).lower()} -- confirm to log it").classes(
+                                ui.label(f"Due {format_date_header(i.next_date).lower()} — confirm to log it").classes(
                                     "text-xs").style(f"color:{TEXT_DIM}")
                             ui.button("Skip", on_click=lambda _, iid=i.id: skip(iid)).props(
                                 "flat dense no-caps").style(f"color:{TEXT_DIM}")
@@ -322,7 +322,7 @@ def recurring_page(tab=None):
                             with ui.column().classes("b-nudge-text gap-0"):
                                 ui.label(f"{cand['merchant']} · {CUR}{cand['typical_amount']:,.2f}/{per}").classes(
                                     "font-semibold")
-                                ui.label(f"Looks like a subscription -- seen {cand['count']} times, last "
+                                ui.label(f"Looks like a subscription — seen {cand['count']} times, last "
                                          f"{cand['last_seen'].day} {cand['last_seen']:%b}").classes(
                                     "text-xs").style(f"color:{TEXT_DIM}")
                             with ui.element("div").classes("b-nudge-cta"):
@@ -459,7 +459,7 @@ def recurring_page(tab=None):
 
         if not rows:
             with card_box().classes("w-full"):
-                empty_state("Nothing here yet -- tap Add for a subscription, a regular bill or your salary.",
+                empty_state("Nothing here yet — tap Add for a subscription, a regular bill or your salary.",
                             "event_repeat")
         for key, title in (("soon", "Next 30 days"), ("later", "Later"), ("rest", "Paused & paid off")):
             group = sorted([r for r in rows if r[0] == key], key=lambda r: r[1])

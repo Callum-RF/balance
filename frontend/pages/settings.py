@@ -110,7 +110,7 @@ def settings_page():
     with section("Appearance"):
         with setting_row("contrast", VIOLET, "Theme"):
             pill_toggle({k: t["label"] for k, t in THEMES.items()}, _theme.ACTIVE_THEME, set_theme)
-        with setting_row("payments", EMERALD, "Currency symbol", "Display only -- amounts aren't converted"):
+        with setting_row("payments", EMERALD, "Currency symbol", "Display only — amounts aren't converted"):
             ui.select(CURRENCY_OPTIONS, value=settings.currency or "£", on_change=set_currency).props(
                 "dense outlined options-dense").classes("w-20")
 
@@ -153,7 +153,7 @@ def settings_page():
     backup_dlg, backup_card = sheet(
         "Off-machine backups",
         "Balance snapshots your data daily to data/backups/. Pick a folder on another drive, or a "
-        "cloud-synced one, and each snapshot is copied there too -- so one disk failure can't lose everything.")
+        "cloud-synced one, and each snapshot is copied there too — so one disk failure can't lose everything.")
     with backup_card:
         mirror_input = ui.input(label="Backup folder", value=settings.backup_mirror_path or "",
                                 placeholder="e.g. D:\\Backups\\Balance").props("dense clearable").classes("w-full")
@@ -165,7 +165,7 @@ def settings_page():
         save_setting(backup_mirror_path=path)
         backup_dlg.close()
         ui.notify("Off-machine backups on." if path else "Off-machine backups off.", type="positive")
-        mirror_sub.set_text(path or "Off -- only on this machine")
+        mirror_sub.set_text(path or "Off — only on this machine")
 
     with Session(engine) as session:
         n_cats = len(session.exec(select(Category)).all())
@@ -178,7 +178,7 @@ def settings_page():
                          on_click=lambda: export_backup()):
             pass
         with setting_row("backup", EMERALD, "Off-machine backups",
-                         settings.backup_mirror_path or "Off -- only on this machine",
+                         settings.backup_mirror_path or "Off — only on this machine",
                          on_click=backup_dlg.open) as mirror_sub:
             pass
 
@@ -287,7 +287,7 @@ def settings_page():
     # --- security --------------------------------------------------------------------
     has_pin = bool(settings.pin_hash)
     pin_dlg, pin_card = sheet("PIN lock", "Ask for a PIN when Balance opens in a new browser session. The "
-                                          "JSON API under /api isn't PIN-protected -- your Tailscale network "
+                                          "JSON API under /api isn't PIN-protected — your Tailscale network "
                                           "is the real security boundary.")
     with pin_card:
         pin_input = ui.input(label="New PIN (4-8 digits)", password=True, password_toggle_button=True).props(

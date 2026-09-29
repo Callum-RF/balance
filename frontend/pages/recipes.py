@@ -143,7 +143,7 @@ def recipes_page():
                                 ui.button(icon="close", on_click=lambda _, iid=it.id: remove_item(iid)).props(
                                     "flat round dense").classes("b-icon-btn").tooltip("Remove")
                 else:
-                    ui.label("No ingredients yet -- add the first below.").classes("b-hint").style("margin:0")
+                    ui.label("No ingredients yet — add the first below.").classes("b-hint").style("margin:0")
 
                 with ui.expansion("Add an ingredient", icon="add", value=not items).classes("w-full"):
                     ingredient_form()
@@ -157,7 +157,7 @@ def recipes_page():
                 with ui.row().classes("w-full items-end gap-2 no-wrap"):
                     i_name = ui.input(label="Ingredient").props("dense").classes("flex-1 min-w-0")
                     i_qty = ui.number(label="Grams", value=100, format="%g").props("dense").classes("w-24")
-                bc = ui.input(label="Barcode (optional) -- fills in the nutrition").props("dense").classes("w-full")
+                bc = ui.input(label="Barcode (optional) — fills in the nutrition").props("dense").classes("w-full")
                 with ui.grid().classes("w-full grid-cols-4 gap-2"):
                     i_cal = ui.number(label="kcal").props("dense")
                     i_p = ui.number(label="Protein").props("dense")
@@ -264,7 +264,7 @@ def recipes_page():
         ])
         if not recipes:
             with card_box().classes("w-full"):
-                empty_state("No recipes yet -- tap New recipe, add the ingredients once, then log the whole "
+                empty_state("No recipes yet — tap New recipe, add the ingredients once, then log the whole "
                             "meal in one tap whenever you make it.", "menu_book")
             return
         with ui.column().classes(LIST_GROUP):

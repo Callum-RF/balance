@@ -96,7 +96,7 @@ def prices_page():
 
         if not item_names:
             with card_box().classes("w-full"):
-                empty_state("No prices logged yet -- log the same item a few times over weeks to see its trend.",
+                empty_state("No prices logged yet — log the same item a few times over weeks to see its trend.",
                             "trending_up")
             return
 
@@ -131,7 +131,7 @@ def prices_page():
                 "lineStyle": {"color": color, "width": 2}, "itemStyle": {"color": color},
             })
         with card_box().classes("w-full"):
-            section_header("All items", subtitle="Each rebased to 100 at its first logged price -- "
+            section_header("All items", subtitle="Each rebased to 100 at its first logged price — "
                                                  "above 100 means it has got dearer")
             if len(series) < 2:
                 empty_state("Log at least two prices for two or more items to compare them.", "query_stats")

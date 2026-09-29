@@ -118,19 +118,28 @@ MEALS = {
     "dinner": [("Salmon, rice & broccoli", 650, 42, 60, 22, 0, 4.5, 420, 0),
                ("Spaghetti bolognese", 700, 34, 78, 24, 6, 9, 680, 0),
                ("Chicken curry & rice", 720, 40, 82, 22, 8, 7, 950, 0)],
+    # Dinners out: logged on the evenings there's a restaurant bill (see DINING).
+    "out": [("Nando's chicken, rice & corn", 980, 58, 92, 38, 6, 10, 1900, 0),
+            ("Wagamama katsu curry", 1050, 42, 130, 36, 14, 9, 1800, 0),
+            ("Pizza Express margherita", 900, 36, 110, 32, 6, 14, 2100, 0),
+            ("Deliveroo burger & fries", 1150, 45, 105, 58, 10, 18, 2200, 0)],
     "snack": [("Protein bar", 210, 20, 22, 7, 12, 3, 120, 0),
               ("Apple", 80, 0, 21, 0, 0, 0, 1, 0),
               ("Glass of red wine", 125, 0, 4, 0, 1, 0, 5, 0)],
 }
+dined_out = {dt for dt, _amt, merch, *_ in tx if merch in DINING}
 with Session(engine) as s:
     for da in range(60):
         dt = d(da)
         for meal in ("breakfast", "lunch", "dinner"):
-            n, cal, p, c, f, asug, sat, sod, caf = random.choice(MEALS[meal])
+            # Eaten out: a restaurant dinner on a night with a restaurant bill,
+            # and a bought sushi box at lunch -- so Money & food has both sides.
+            out = meal == "dinner" and dt in dined_out
+            n, cal, p, c, f, asug, sat, sod, caf = random.choice(MEALS["out" if out else meal])
             s.add(FoodLog(date=dt, meal_type=meal, food_name=n, quantity_g=random.choice([120, 150, 180, 200]),
                           calories=cal, protein_g=p, carbs_g=c, fat_g=f, sugar_g=asug + random.uniform(0, 6),
                           fiber_g=random.uniform(1, 6), sodium_mg=sod, saturated_fat_g=sat, added_sugar_g=asug,
-                          caffeine_mg=caf, alcohol_g=0))
+                          caffeine_mg=caf, alcohol_g=0, eaten_out=out or n == "Sushi box"))
         if random.random() < 0.6:
             n, cal, p, c, f, asug, sat, sod, caf = random.choice(MEALS["snack"])
             s.add(FoodLog(date=dt, meal_type="snack", food_name=n, quantity_g=100, calories=cal, protein_g=p,

@@ -1,4 +1,4 @@
-"""The reports page."""
+"""The reports page: one month, summarised -- and downloadable to share."""
 from datetime import date
 
 from nicegui import ui
@@ -6,9 +6,11 @@ from sqlmodel import Session
 
 from backend.database import engine
 
-from ..common import CUR
+from ..common import CUR, category_style
 from ..components import (
+    bar_row,
     card_box,
+    empty_state,
     page_header,
     section_header,
     summary_strip,
@@ -18,9 +20,9 @@ from ..theme import (
     AMBER,
     EMERALD,
     INDIGO,
+    LIST_GROUP,
     RED,
-    TEXT,
-    TEXT_DIM,
+    SKY,
     VIOLET,
 )
 
@@ -28,23 +30,46 @@ from ..theme import (
 def reports_page():
     from backend.report import monthly_report, report_html
 
-    page_header("Monthly Report", "A shareable summary of your month.", icon="summarize")
+    page_header("Monthly Report", "A shareable summary of your month.")
     today = date.today()
-    opts, y, m = {}, today.year, today.month
-    for _ in range(12):
-        opts[f"{y}-{m:02d}"] = date(y, m, 1).strftime("%B %Y")
-        m -= 1
-        if m == 0:
-            m, y = 12, y - 1
-    month_select = ui.select(opts, value=f"{today.year}-{today.month:02d}", label="Month").props(
-        "dense options-dense").classes("w-56")
+    state = {"y": today.year, "m": today.month}
+
+    def shift(delta):
+        y, m = state["y"], state["m"] + delta
+        y, m = (y - 1, 12) if m == 0 else (y + 1, 1) if m == 13 else (y, m)
+        if (y, m) <= (today.year, today.month):   # never into the future
+            state.update(y=y, m=m)
+            render()
+
+    header = ui.row().classes("w-full items-center justify-between gap-2")
     container = ui.column().classes("w-full gap-4 b-cards2")
 
     def render():
-        container.clear()
-        yr, mo = map(int, month_select.value.split("-"))
+        yr, mo = state["y"], state["m"]
         with Session(engine) as session:
             data = monthly_report(session, yr, mo)
+        is_now = (yr, mo) == (today.year, today.month)
+
+        def download():
+            html = report_html(data, str(CUR))
+            ui.download.content(html.encode("utf-8"), f"balance-report-{yr}-{mo:02d}.html", "text/html")
+
+        header.clear()
+        with header:
+            with ui.element("div").classes("b-monthnav"):
+                ui.button(icon="chevron_left", on_click=lambda: shift(-1)).props(
+                    "flat round dense").classes("b-icon-btn").tooltip("Previous month")
+                ui.label(date(yr, mo, 1).strftime("%B %Y")).classes("b-month")
+                nxt = ui.button(icon="chevron_right", on_click=lambda: shift(1)).props(
+                    "flat round dense").classes("b-icon-btn")
+                if is_now:
+                    nxt.props("disable")
+                else:
+                    nxt.tooltip("Next month")
+            ui.button("Download", icon="download", on_click=download).props(
+                "flat dense no-caps color=primary").tooltip("Save this month as a web page to share")
+
+        container.clear()
         with container:
             summary_strip([
                 ("Income", f"{CUR}{data['total_income']:,.2f}", EMERALD),
@@ -61,35 +86,40 @@ def reports_page():
                         ui.label(f"{CUR}{abs(ou):,.2f} {'over' if ou > 0 else 'under'}").style(
                             f"color:{RED if ou > 0 else EMERALD}")
 
-            with card_box().classes("w-full b-half"):
-                section_header("Spending by category", icon="pie_chart", icon_color=VIOLET)
+            total = data["total_spent"] or 1
+            with card_box().classes("w-full b-half gap-2"):
+                section_header("Where it went", subtitle="Spending by category, share of the month")
                 if not data["by_category"]:
-                    ui.label("No spending recorded this month.").classes("text-xs").style(f"color:{TEXT_DIM}")
-                for name, amt in data["by_category"].items():
-                    with ui.row().classes("w-full justify-between py-0.5"):
-                        ui.label(name).classes("text-sm").style(f"color:{TEXT}")
-                        ui.label(f"{CUR}{amt:,.2f}").classes("text-sm").style(f"color:{TEXT_DIM}")
+                    empty_state("No spending recorded this month.", "receipt_long")
+                else:
+                    with ui.column().classes(LIST_GROUP):
+                        for name, amt in sorted(data["by_category"].items(), key=lambda kv: -kv[1]):
+                            icon, color = category_style(name)
+                            bar_row(icon, color, name, f"{CUR}{amt:,.2f}", amt / total, f"{amt / total:.0%}")
 
-            if data["top_merchants"]:
-                with card_box().classes("w-full b-half"):
-                    section_header("Top merchants", icon="storefront", icon_color=AMBER)
-                    for name, amt in data["top_merchants"]:
-                        with ui.row().classes("w-full justify-between py-0.5"):
-                            ui.label(name).classes("text-sm").style(f"color:{TEXT}")
-                            ui.label(f"{CUR}{amt:,.2f}").classes("text-sm").style(f"color:{TEXT_DIM}")
+            with card_box().classes("w-full b-half gap-2"):
+                section_header("Top merchants", subtitle="Where the most went")
+                if not data["top_merchants"]:
+                    empty_state("No spending recorded this month.", "storefront")
+                else:
+                    top = data["top_merchants"][0][1] or 1
+                    with ui.column().classes(LIST_GROUP):
+                        for i, (name, amt) in enumerate(data["top_merchants"], 1):
+                            bar_row("storefront", AMBER, f"{i}. {name}", f"{CUR}{amt:,.2f}", amt / top)
 
             n = data["nutrition"]
             with card_box().classes("w-full"):
-                section_header("Nutrition", icon="restaurant", icon_color=INDIGO)
-                ui.label(
-                    f"{n['days_logged']} day(s) logged. Daily average {n['avg_calories']:,.0f} kcal · "
-                    f"P {n['avg_protein']:,.0f}g · C {n['avg_carbs']:,.0f}g · F {n['avg_fat']:,.0f}g."
-                ).classes("text-sm").style(f"color:{TEXT_DIM}")
+                section_header("Nutrition", subtitle=f"Daily averages across the {n['days_logged']} "
+                                                      f"day{'s' if n['days_logged'] != 1 else ''} you logged food")
+                if not n["days_logged"]:
+                    empty_state("No food logged this month.", "restaurant")
+                else:
+                    summary_strip([
+                        ("Calories", f"{n['avg_calories']:,.0f}", INDIGO),
+                        ("Protein", f"{n['avg_protein']:,.0f}g", EMERALD),
+                        ("Carbs", f"{n['avg_carbs']:,.0f}g", AMBER),
+                        ("Fat", f"{n['avg_fat']:,.0f}g", VIOLET),
+                        ("Days logged", str(n["days_logged"]), SKY),
+                    ])
 
-            def download():
-                html = report_html(data, str(CUR))
-                ui.download.content(html.encode("utf-8"), f"balance-report-{yr}-{mo:02d}.html", "text/html")
-            ui.button("Download report (HTML)", icon="download", on_click=download).props("outline no-caps color=primary")
-
-    month_select.on_value_change(render)
     render()

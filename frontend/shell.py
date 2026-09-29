@@ -388,6 +388,10 @@ body.body--light { --b-glass: rgba(253,251,246,.8); --b-glass-strong: rgba(243,2
   text-overflow: ellipsis; }
 .b-row-value { font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums;
   white-space: nowrap; color: var(--b-text); }
+.b-bar { height: 5px; border-radius: 999px; background: var(--b-surface-2); margin-top: 6px; overflow: hidden; }
+.b-bar > div { height: 100%; border-radius: 999px; }
+.b-monthnav { display: flex; align-items: center; gap: 4px; }
+.b-monthnav .b-month { font-size: 17px; font-weight: 750; min-width: 150px; text-align: center; }
 .b-row-end { display: flex; align-items: center; gap: 6px; flex: none; color: var(--b-text-dim);
   font-size: 13.5px; }
 .b-row-end .q-toggle { margin-right: -6px; }

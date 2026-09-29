@@ -472,3 +472,19 @@ def setting_row(icon: str, color: str, title: str, sub: str = None, on_click=Non
             yield sub_label
             if on_click:
                 ui.icon("chevron_right").classes("text-xl").style(f"color:{TEXT_DIM}")
+
+
+def bar_row(icon: str, color: str, title: str, value: str, share: float, sub: str = None):
+    """A ranked-list row: tinted icon, name with a bar under it showing its
+    share of the whole (0-1), and the amount on the right."""
+    with ui.element("div").classes("b-row").style("cursor:default"):
+        with ui.element("div").classes("b-row-icon").style(f"background:{alpha(color, '22')}; color:{color}"):
+            ui.icon(icon)
+        with ui.element("div").classes("b-row-text"):
+            with ui.row().classes("w-full items-baseline justify-between gap-2 no-wrap"):
+                ui.label(title).classes("b-row-title")
+                ui.label(value).classes("b-row-value")
+            with ui.element("div").classes("b-bar"):
+                ui.element("div").style(f"width:{max(min(share, 1), 0) * 100:.1f}%; background:{color}")
+            if sub:
+                ui.label(sub).classes("b-row-sub")

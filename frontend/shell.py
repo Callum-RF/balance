@@ -6,6 +6,8 @@ Pages render inside ui.sub_pages, so this chrome stays put while they change;
 the dock's highlight follows the address client-side (see _NAV_JS)."""
 
 from nicegui import ui
+
+from backend.deploy import PREFIX
 from sqlmodel import Session, select
 
 from backend.database import engine
@@ -72,21 +74,15 @@ def inject_theme():
     # bright one text and icons get in dark mode (#818CF8 behind white is ~3:1).
     ui.colors(primary="#6366F1" if _theme.THEME_DARK else THEMES["light"]["INDIGO"])
     ui.add_head_html(f"""
-    <link rel="icon" type="image/png" href="/icon-assets/icon.png">
-    <link rel="apple-touch-icon" href="/icon-assets/icon.png">
-    <link rel="manifest" href="/icon-assets/manifest.json">
+    <link rel="icon" type="image/png" href="{PREFIX}/icon-assets/icon.png">
+    <link rel="apple-touch-icon" href="{PREFIX}/icon-assets/icon.png">
+    {_INSTALL_LINK}
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Balance">
     <script src="https://unpkg.com/[email protected]/html5-qrcode.min.js"></script>
-    <script>
-      if ('serviceWorker' in navigator) {{
-        window.addEventListener('load', function () {{
-          navigator.serviceWorker.register('/sw.js').catch(function () {{}});
-        }});
-      }}
-    </script>
+    {_INSTALL_SCRIPT}
     """)
     ui.add_head_html(_APP_SWITCH_JS)
     def _vars(mode):
@@ -181,7 +177,7 @@ def inject_theme():
     </style>
     """)
     ui.add_head_html(f"<style>{_SHELL_CSS}</style>")
-    ui.add_head_html(_NAV_JS)
+    ui.add_head_html(_NAV_JS.replace("__PREFIX__", PREFIX))
     return dark
 
 
@@ -198,20 +194,31 @@ APPS = [
 # between the tailnet (Balance :8444, Medley :8443, launcher at the root) and
 # local dev (:8000 / :8100, no launcher). Resolving from location at click time
 # means the switcher works in both places with no server-side config.
+# Inside Ensemble (PREFIX set) Balance is a page of the installed Ensemble app,
+# so it offers no manifest or service worker of its own: a second manifest on
+# the same address invites a second, conflicting install, and '/sw.js' there is
+# the launcher's worker, not Balance's. Served at the root, it stays installable.
+_INSTALL_LINK = "" if PREFIX else '<link rel="manifest" href="/icon-assets/manifest.json">'
+_INSTALL_SCRIPT = "" if PREFIX else """<script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>"""
+
 _APP_SWITCH_JS = """
 <script>
 window.__appUrl = function (app) {
   var h = location.hostname;
   var isLocal = (h === 'localhost' || h === '127.0.0.1');
   if (app === 'home') { return isLocal ? null : 'https://' + h + '/'; }
-  // Crescendo is the odd one out: a path on the root origin rather than its own
-  // port, which is what lets it install inside Ensemble's scope and work offline.
-  if (app === 'crescendo') {
-    return isLocal ? 'http://' + h + ':8300/crescendo/' : 'https://' + h + '/crescendo/';
-  }
-  var ports = isLocal ? {balance: 8000, medley: 8100, cadence: 8200}
-                      : {balance: 8444, medley: 8443, cadence: 8445};
-  return (isLocal ? 'http:' : 'https:') + '//' + h + ':' + ports[app] + '/';
+  // Every app is a path on the one Ensemble address, which is what keeps them
+  // all inside the installed app with no address bar. In local development
+  // each still runs on its own port, under the same path.
+  var local = {balance: 8000, medley: 8100, cadence: 8200, crescendo: 8300};
+  return isLocal ? 'http://' + h + ':' + local[app] + '/' + app + '/'
+                 : 'https://' + h + '/' + app + '/';
 };
 window.__goApp = function (app) {
   var u = window.__appUrl(app);
@@ -589,8 +596,13 @@ document.addEventListener('keydown', function (ev) {
 });
 // Marks the More sheet's tile for the page you're on (the sheet's tiles only
 // exist while it's open, so it runs when the sheet opens).
+// The address starts with the app's prefix inside Ensemble; routes do not.
+window.bPath = function (p) {
+  var pre = '__PREFIX__';
+  return pre && (p === pre || p.indexOf(pre + '/') === 0) ? (p.slice(pre.length) || '/') : p;
+};
 window.bMarkTiles = function () {
-  var path = window.location.pathname;
+  var path = bPath(window.location.pathname);
   document.querySelectorAll('.b-tile[data-route]').forEach(function (t) {
     var r = t.getAttribute('data-route');
     t.classList.toggle('here', r === path
@@ -600,9 +612,9 @@ window.bMarkTiles = function () {
 };
 (function () {
   function updateNav() {
-    var path = window.location.pathname, hit = false;
+    var path = bPath(window.location.pathname), hit = false;
     document.querySelectorAll('.b-dock a.b-dock-item[href]').forEach(function (a) {
-      var on = a.getAttribute('href') === path;
+      var on = bPath(a.getAttribute('href')) === path;
       a.classList.toggle('active', on);
       hit = hit || on;
     });

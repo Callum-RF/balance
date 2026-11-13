@@ -17,6 +17,7 @@ from nicegui import ui
 
 from backend.main import app  # FastAPI app with API routers already attached
 from backend.database import RECEIPTS_DIR
+from backend.deploy import PREFIX
 import frontend.ui  # noqa: F401  (registers @ui.page routes as a side effect)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -53,7 +54,45 @@ else:
     with open(_SECRET_FILE, "w") as f:
         f.write(_STORAGE_SECRET)
 
-ui.run_with(app, title="Balance", favicon="/icon-assets/icon.png", storage_secret=_STORAGE_SECRET)
+# The session cookie gets its own name. Every Ensemble app shares one address,
+# and cookies there are shared too: with the default name each app would keep
+# overwriting the others' session, which for Balance means the PIN lock asking
+# again after every visit to another app.
+ui.run_with(app, title="Balance", favicon="/icon-assets/icon.png", storage_secret=_STORAGE_SECRET,
+            session_middleware_kwargs={"session_cookie": "balance_session"})
+
+
+class UnderPrefix:
+    """Serve the app as if it lived at a prefix on a shared address.
+
+    Setting root_path is what makes every link the app writes start with the
+    prefix (NiceGUI reads it for its own files, page links and live connection).
+    The path has to *include* the prefix too — that is the ASGI convention, and
+    without it pages load while every framework file 404s.
+
+    Requests arrive in two shapes and both are accepted:
+      /stats            Tailscale's path proxy strips the prefix before forwarding
+      /balance/stats    a browser pointed straight at this port, or the old
+                        port address, sends it whole
+    so the prefix is put back when it is missing and left alone when present.
+    """
+
+    def __init__(self, inner, prefix: str):
+        self.inner, self.prefix = inner, prefix
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            scope = dict(scope, root_path=self.prefix)
+            if not (path == self.prefix or path.startswith(self.prefix + "/")):
+                scope["path"] = self.prefix + path
+                scope["raw_path"] = scope["path"].encode()
+        await self.inner(scope, receive, send)
+
+
+# What uvicorn serves. `app` stays the plain FastAPI app, which is what the
+# tests import.
+asgi = UnderPrefix(app, PREFIX) if PREFIX else app
 
 if __name__ == "__main__":
     import uvicorn
@@ -69,8 +108,8 @@ if __name__ == "__main__":
     # run: BALANCE_HOST=0.0.0.0
     _host = os.environ.get("BALANCE_HOST", "127.0.0.1")
     if os.environ.get("BALANCE_RELOAD") == "1":
-        uvicorn.run("run:app", host=_host, port=_port, reload=True,
+        uvicorn.run("run:asgi", host=_host, port=_port, reload=True,
                     reload_dirs=[os.path.join(_HERE, "backend"),
                                  os.path.join(_HERE, "frontend")])
     else:
-        uvicorn.run(app, host=_host, port=_port)
+        uvicorn.run(asgi, host=_host, port=_port)

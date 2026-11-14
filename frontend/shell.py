@@ -185,10 +185,10 @@ def inject_theme():
 # Sibling apps served from this same tailnet node, for the header app-switcher.
 THIS_APP = "balance"
 APPS = [
-    ("balance", "Balance", "account_balance_wallet"),
-    ("medley", "Medley", "video_library"),
-    ("cadence", "Cadence", "graphic_eq"),
-    ("crescendo", "Crescendo", "fitness_center"),
+    ("balance", "Balance"),
+    ("medley", "Medley"),
+    ("cadence", "Cadence"),
+    ("crescendo", "Crescendo"),
 ]
 
 # The apps share a hostname but sit on different ports, and those ports differ
@@ -229,6 +229,17 @@ window.__goApp = function (app) {
 """
 
 
+def _app_tile(key: str):
+    """An app's own icon, small, for the switcher menu. A plain <img>, so the
+    address is hand-written and has to carry the prefix itself. The files come
+    from Ensemble's icon generator (launcher\\scripts\\make_app_icons.py). The
+    hairline keeps the dark tile's edge visible on the dark menu."""
+    return ui.element("img").props(
+        f'src="{PREFIX}/icon-assets/apps/{key}.png?v=1" alt=""'
+    ).style("width:24px;height:24px;border-radius:7px;display:block;flex:none;"
+            "box-shadow:0 0 0 1px rgba(255,255,255,.09)")
+
+
 def app_switcher():
     """Grid button that jumps to the sibling apps, or back to the Home launcher.
     Targets resolve client-side so the same menu works over the tailnet and in
@@ -242,21 +253,21 @@ def app_switcher():
                 ui.label(f"You're in {dict((a[0], a[1]) for a in APPS)[THIS_APP]}") \
                     .classes("text-xs").style(f"color:{TEXT_DIM}")
             ui.separator().style(f"background:{BORDER}")
-            for key, label, icon in APPS:
+            for key, label in APPS:
                 if key == THIS_APP:
                     continue
                 with ui.menu_item(
                     on_click=lambda k=key: ui.run_javascript(f"window.__goApp('{k}')")
                 ):
                     with ui.row().classes("items-center gap-3 no-wrap w-full"):
-                        ui.icon(icon).style(f"color:{INDIGO}")
+                        _app_tile(key)
                         ui.label(label)
             ui.separator().style(f"background:{BORDER}")
             with ui.menu_item(
                 on_click=lambda: ui.run_javascript("window.__goApp('home')")
             ):
                 with ui.row().classes("items-center gap-3 no-wrap w-full"):
-                    ui.icon("apps").style(f"color:{INDIGO}")
+                    _app_tile("ensemble")
                     ui.label("Ensemble")
 
 

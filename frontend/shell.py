@@ -74,8 +74,9 @@ def inject_theme():
     # bright one text and icons get in dark mode (#818CF8 behind white is ~3:1).
     ui.colors(primary="#6366F1" if _theme.THEME_DARK else THEMES["light"]["INDIGO"])
     ui.add_head_html(f"""
-    <link rel="icon" type="image/png" href="{PREFIX}/icon-assets/icon.png">
-    <link rel="apple-touch-icon" href="{PREFIX}/icon-assets/icon.png">
+    <!-- Versioned, because browsers cache a tab icon hard: bump ?v= when the art changes. -->
+    <link rel="icon" type="image/png" href="{PREFIX}/icon-assets/icon-192.png?v=2">
+    <link rel="apple-touch-icon" href="{PREFIX}/icon-assets/icon-192.png?v=2">
     {_INSTALL_LINK}
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">

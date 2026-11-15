@@ -32,7 +32,8 @@ def test_spend_this_month_and_calories_today():
         s.commit()
         g = glance(s, TODAY)
     assert g == {"locked": False, "primary": "£412 spent this month",
-                 "secondary": "1,850 of 2,600 kcal today"}
+                 "secondary": "1,850 of 2,600 kcal today", "url": "/transactions",
+                 "week": {"value": "£162", "label": "spent"}}       # only the 27th is recent
 
 
 def test_small_amounts_keep_pence_and_currency_follows_settings():
@@ -42,7 +43,34 @@ def test_small_amounts_keep_pence_and_currency_follows_settings():
         s.commit()
         g = glance(s, TODAY)
     assert g["primary"] == "€12.50 spent this month"
-    assert g["secondary"] == "No food logged today"
+    assert g["secondary"] == "Last entry today"       # no food logged: say how fresh it is
+
+
+def test_a_month_with_no_statement_does_not_claim_nothing_was_spent():
+    with _session() as s:
+        s.add(Transaction(date=date(2026, 8, 30), amount=40.0))
+        s.add(Transaction(date=date(2026, 8, 12), amount=15.0))
+        s.commit()
+        g = glance(s, TODAY)
+    assert g == {"locked": False, "primary": "Nothing since 30 Aug",
+                 "secondary": "Import a statement to catch up", "url": "/import",
+                 "week": {"value": "—", "label": "not imported"}}
+    assert "£0" not in str(g)
+
+
+def test_an_empty_database_invites_the_first_import():
+    with _session() as s:
+        g = glance(s, TODAY)
+    assert g["primary"] == "No spending yet"
+    assert g["url"] == "/import"
+
+
+def test_last_years_data_says_which_year():
+    with _session() as s:
+        s.add(Transaction(date=date(2025, 12, 30), amount=40.0))
+        s.commit()
+        g = glance(s, TODAY)
+    assert g["primary"] == "Nothing since 30 Dec 2025"
 
 
 def test_pin_lock_hides_every_figure():
@@ -53,6 +81,7 @@ def test_pin_lock_hides_every_figure():
         g = glance(s, TODAY)
     assert g["locked"] is True
     assert "500" not in str(g) and "spent" not in str(g)
+    assert "week" not in g and "url" not in g         # the lock hides the row's figure too
 
 
 def test_only_the_launcher_and_localhost_may_read_it():
@@ -86,7 +115,7 @@ def test_route_echoes_only_allowed_origins():
         assert ok.status_code == 200
         assert ok.headers["access-control-allow-origin"] == "https://balance.taildd6c4b.ts.net"
         assert ok.headers["cache-control"] == "no-store"
-        assert ok.json()["primary"].endswith("spent this month")
+        assert ok.json()["primary"] == "No spending yet"           # an empty database
         bad = client.get("/api/glance", headers={"Origin": "https://evil.example"})
         assert "access-control-allow-origin" not in bad.headers
     finally:

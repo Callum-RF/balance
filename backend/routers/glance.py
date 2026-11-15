@@ -5,13 +5,22 @@ different origin), so this is the one route that answers cross-origin — and
 only to the launcher's own origin (plus localhost for development), never to
 anything else. If a PIN lock is set, it reports "locked" and no figures, so the
 tile can't be used to read past the lock.
+
+What it returns: `primary` and `secondary` are the two lines of text. Optional
+extras, each left out when there is nothing to say: `url`, where the summary
+should take you (a path inside this app); `image`, artwork for it; and `week`,
+a `{value, label}` pair for the launcher's "past 7 days" row.
+
+Balance is fed by statement imports, not daily entry, so the summary is honest
+about how far the data reaches: a month with nothing in it reads "Nothing since
+30 Sep", not "£0.00 spent" — which would be a figure, and a wrong one.
 """
 import os
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from backend.database import get_session
 from backend.models import AppSettings, FoodLog, NutrientGoals, Transaction
@@ -39,6 +48,14 @@ def _money(amount: float, cur: str) -> str:
     return f"{cur}{amount:,.0f}" if abs(amount) >= 100 else f"{cur}{amount:,.2f}"
 
 
+def _day(day: date, today: date) -> str:
+    """'today', 'yesterday', '30 Sep' — and the year once it is not this one."""
+    gap = (today - day).days
+    if gap in (0, 1):
+        return "today" if gap == 0 else "yesterday"
+    return f"{day.day} {day:%b}" + ("" if day.year == today.year else f" {day.year}")
+
+
 def glance(session: Session, today: date | None = None) -> dict:
     today = today or date.today()
     settings = session.exec(select(AppSettings)).first()
@@ -47,9 +64,26 @@ def glance(session: Session, today: date | None = None) -> dict:
     cur = (settings.currency if settings else None) or "£"
 
     start, end = period_bounds("monthly", today)
-    spent = sum(t.amount for t in session.exec(
+    month = session.exec(
         select(Transaction).where(Transaction.date >= start, Transaction.date <= end)
-    ).all())
+    ).all()
+    latest = session.exec(select(func.max(Transaction.date))).one()
+
+    # The past seven days, for the launcher's row. No entries in that window
+    # means "not imported yet", which is not the same as having spent nothing.
+    recent = session.exec(
+        select(Transaction).where(Transaction.date > today - timedelta(days=7),
+                                  Transaction.date <= today)
+    ).all()
+    week = ({"value": _money(sum(t.amount for t in recent), cur), "label": "spent"}
+            if recent else {"value": "—", "label": "not imported"})
+
+    if not month:
+        return {"locked": False,
+                "primary": f"Nothing since {_day(latest, today)}" if latest else "No spending yet",
+                "secondary": "Import a statement to catch up" if latest
+                else "Import a statement to begin",
+                "url": "/import", "week": week}
 
     kcal = sum(f.calories or 0 for f in session.exec(
         select(FoodLog).where(FoodLog.date == today)
@@ -60,10 +94,11 @@ def glance(session: Session, today: date | None = None) -> dict:
         secondary = (f"{kcal:,.0f} of {goal:,.0f} kcal today" if goal
                      else f"{kcal:,.0f} kcal today")
     else:
-        secondary = "No food logged today"
+        secondary = f"Last entry {_day(latest, today)}"
 
-    return {"locked": False, "primary": f"{_money(spent, cur)} spent this month",
-            "secondary": secondary}
+    return {"locked": False,
+            "primary": f"{_money(sum(t.amount for t in month), cur)} spent this month",
+            "secondary": secondary, "url": "/transactions", "week": week}
 
 
 @router.get("/api/glance")
